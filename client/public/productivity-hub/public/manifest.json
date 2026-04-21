@@ -1,0 +1,93 @@
+{
+  "name": "Productivity Hub - Complete Productivity Solution",
+  "short_name": "Productivity Hub",
+  "description": "Comprehensive productivity platform with task management, habit tracking, Pomodoro timer, team collaboration, and AI insights",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#6366f1",
+  "orientation": "portrait-primary",
+  "categories": ["productivity", "business", "utilities"],
+  "lang": "en",
+  "dir": "ltr",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Add Task",
+      "short_name": "New Task",
+      "description": "Create a new task",
+      "url": "/?action=add-task",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Start Timer",
+      "short_name": "Pomodoro",
+      "description": "Start a Pomodoro session",
+      "url": "/?action=start-timer",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "View Analytics",
+      "short_name": "Analytics",
+      "description": "Check productivity analytics",
+      "url": "/analytics",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshot-wide.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Productivity Hub Dashboard on Desktop"
+    },
+    {
+      "src": "/screenshot-narrow.png",
+      "sizes": "750x1334",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Productivity Hub Mobile Experience"
+    }
+  ],
+  "features": [
+    "task-management",
+    "habit-tracking",
+    "pomodoro-timer",
+    "team-collaboration",
+    "offline-support",
+    "data-export",
+    "ai-insights"
+  ],
+  "related_applications": [],
+  "prefer_related_applications": false
+}

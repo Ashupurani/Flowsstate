@@ -1,0 +1,1059 @@
+import type { Express } from "express";
+import { createServer, type Server } from "http";
+import { storage } from "./storage";
+import authRoutes from "./authRoutes";
+import { authenticateToken, type AuthenticatedRequest } from "./middleware";
+import { insertTaskSchema, insertHabitSchema, insertHabitEntrySchema, insertPomodoroSessionSchema } from "@shared/schema";
+import { z } from "zod";
+import {
+  ObjectStorageService,
+  ObjectNotFoundError,
+} from "./objectStorage";
+import { createDataBackup, exportUserData } from "./backup";
+import archiver from "archiver";
+import { sendEmail, getDisplayFromAddress } from "./email";
+import * as XLSX from 'xlsx';
+
+// Helper function to convert JSON data to CSV
+function convertToCSV(data: any[]): string {
+  if (!data || data.length === 0) return '';
+  
+  const headers = Object.keys(data[0]);
+  const csvRows = [headers.join(',')];
+  
+  for (const row of data) {
+    const values = headers.map(header => {
+      const value = row[header];
+      // Escape commas and quotes in CSV
+      if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
+        return `"${value.replace(/"/g, '""')}"`;
+      }
+      return value || '';
+    });
+    csvRows.push(values.join(','));
+  }
+  
+  return csvRows.join('\n');
+}
+
+// Excel export functionality with professional formatting
+function createExcelWorkbook(data: any, userId: number): Buffer {
+  const workbook = XLSX.utils.book_new();
+  
+  // Create summary sheet
+  const summaryData = [
+    ['Productivity Hub Data Export'],
+    [''],
+    ['Export Date:', new Date().toISOString().split('T')[0]],
+    ['User ID:', userId],
+    [''],
+    ['Data Summary:'],
+    ['Tasks:', data.tasks?.length || 0],
+    ['Habits:', data.habits?.length || 0],
+    ['Habit Entries:', data.habitEntries?.length || 0],
+    ['Pomodoro Sessions:', data.pomodoroSessions?.length || 0],
+    [''],
+    ['Sheet Overview:'],
+    ['• Tasks - All your tasks and their details'],
+    ['• Habits - Your habit definitions and settings'],
+    ['• Habit Entries - Daily habit completion records'],
+    ['• Pomodoro Sessions - Focus session history'],
+    ['• Statistics - Data analysis and insights']
+  ];
+  
+  const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+  
+  // Style the summary sheet
+  summarySheet['!cols'] = [{ width: 25 }, { width: 30 }];
+  summarySheet['A1'] = { v: 'Productivity Hub Data Export', t: 's', s: { font: { bold: true, sz: 16 } } };
+  
+  XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
+  
+  // Tasks sheet with formatted data
+  if (data.tasks && data.tasks.length > 0) {
+    const taskHeaders = ['ID', 'Title', 'Category', 'Priority', 'Status', 'Day of Week', 'Week', 'Notes', 'Created Date'];
+    const taskData = data.tasks.map((task: any) => [
+      task.id,
+      task.title,
+      task.category,
+      task.priority,
+      task.status,
+      task.dayOfWeek,
+      task.weekKey,
+      task.notes || '',
+      new Date(task.createdAt).toLocaleDateString()
+    ]);
+    
+    const tasksSheet = XLSX.utils.aoa_to_sheet([taskHeaders, ...taskData]);
+    tasksSheet['!cols'] = [
+      { width: 8 }, { width: 25 }, { width: 15 }, { width: 12 }, 
+      { width: 12 }, { width: 15 }, { width: 12 }, { width: 30 }, { width: 15 }
+    ];
+    
+    XLSX.utils.book_append_sheet(workbook, tasksSheet, 'Tasks');
+  }
+  
+  // Habits sheet
+  if (data.habits && data.habits.length > 0) {
+    const habitHeaders = ['ID', 'Name', 'Icon', 'Color', 'Category', 'Schedule', 'Created Date'];
+    const habitData = data.habits.map((habit: any) => [
+      habit.id,
+      habit.name,
+      habit.icon || '',
+      habit.color || '',
+      habit.category || '',
+      habit.schedule || 'daily',
+      new Date(habit.createdAt).toLocaleDateString()
+    ]);
+    
+    const habitsSheet = XLSX.utils.aoa_to_sheet([habitHeaders, ...habitData]);
+    habitsSheet['!cols'] = [
+      { width: 8 }, { width: 20 }, { width: 8 }, { width: 12 }, 
+      { width: 15 }, { width: 12 }, { width: 15 }
+    ];
+    
+    XLSX.utils.book_append_sheet(workbook, habitsSheet, 'Habits');
+  }
+  
+  // Habit Entries sheet
+  if (data.habitEntries && data.habitEntries.length > 0) {
+    const entryHeaders = ['ID', 'Habit ID', 'Date', 'Completed', 'Notes'];
+    const entryData = data.habitEntries.map((entry: any) => [
+      entry.id,
+      entry.habitId,
+      entry.date,
+      entry.completed ? 'Yes' : 'No',
+      entry.notes || ''
+    ]);
+    
+    const entriesSheet = XLSX.utils.aoa_to_sheet([entryHeaders, ...entryData]);
+    entriesSheet['!cols'] = [
+      { width: 8 }, { width: 12 }, { width: 12 }, { width: 12 }, { width: 30 }
+    ];
+    
+    XLSX.utils.book_append_sheet(workbook, entriesSheet, 'Habit Entries');
+  }
+  
+  // Pomodoro Sessions sheet
+  if (data.pomodoroSessions && data.pomodoroSessions.length > 0) {
+    const sessionHeaders = ['ID', 'Type', 'Duration (min)', 'Started At', 'Completed At', 'Task', 'Notes'];
+    const sessionData = data.pomodoroSessions.map((session: any) => [
+      session.id,
+      session.type,
+      session.duration,
+      new Date(session.startedAt).toLocaleString(),
+      session.completedAt ? new Date(session.completedAt).toLocaleString() : 'Not completed',
+      session.taskTitle || '',
+      session.notes || ''
+    ]);
+    
+    const sessionsSheet = XLSX.utils.aoa_to_sheet([sessionHeaders, ...sessionData]);
+    sessionsSheet['!cols'] = [
+      { width: 8 }, { width: 12 }, { width: 15 }, { width: 20 }, 
+      { width: 20 }, { width: 25 }, { width: 30 }
+    ];
+    
+    XLSX.utils.book_append_sheet(workbook, sessionsSheet, 'Pomodoro Sessions');
+  }
+  
+  // Statistics sheet
+  const statsData = [
+    ['Productivity Statistics'],
+    [''],
+    ['Task Statistics:'],
+    ['Total Tasks:', data.tasks?.length || 0],
+    ['Completed Tasks:', data.tasks?.filter((t: any) => t.status === 'completed').length || 0],
+    ['In Progress Tasks:', data.tasks?.filter((t: any) => t.status === 'in-progress').length || 0],
+    [''],
+    ['Habit Statistics:'],
+    ['Total Habits:', data.habits?.length || 0],
+    ['Total Habit Entries:', data.habitEntries?.length || 0],
+    ['Completed Entries:', data.habitEntries?.filter((e: any) => e.completed).length || 0],
+    ['Completion Rate:', data.habitEntries?.length ? 
+      `${Math.round((data.habitEntries.filter((e: any) => e.completed).length / data.habitEntries.length) * 100)}%` : '0%'],
+    [''],
+    ['Focus Statistics:'],
+    ['Total Pomodoro Sessions:', data.pomodoroSessions?.length || 0],
+    ['Completed Sessions:', data.pomodoroSessions?.filter((s: any) => s.completedAt).length || 0],
+    ['Total Focus Time (min):', data.pomodoroSessions?.reduce((sum: number, s: any) => 
+      s.completedAt ? sum + s.duration : sum, 0) || 0]
+  ];
+  
+  const statsSheet = XLSX.utils.aoa_to_sheet(statsData);
+  statsSheet['!cols'] = [{ width: 25 }, { width: 20 }];
+  
+  XLSX.utils.book_append_sheet(workbook, statsSheet, 'Statistics');
+  
+  return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+}
+
+// Team invitation email sending function
+async function sendTeamInvitationEmail(email: string, inviterName: string, role: string): Promise<boolean> {
+  const FRONTEND_URL = process.env.FRONTEND_URL || (process.env.REPLIT_DEV_DOMAIN 
+    ? `https://${process.env.REPLIT_DEV_DOMAIN}` 
+    : 'http://localhost:5000');
+    
+  const emailContent = {
+    to: email,
+    from: getDisplayFromAddress('team'),
+    subject: `${inviterName} invited you to join their Productivity Hub team`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h1 style="color: #3b82f6; margin: 0;">Productivity Hub</h1>
+          <p style="color: #64748b; margin: 5px 0;">Team Collaboration Platform</p>
+        </div>
+        
+        <div style="background: linear-gradient(135deg, #3b82f6, #8b5cf6); padding: 30px; border-radius: 12px; text-align: center; margin-bottom: 30px;">
+          <h2 style="color: white; margin: 0 0 15px 0;">You're Invited to Join a Team!</h2>
+          <p style="color: #e0e7ff; margin: 0;">${inviterName} has invited you to collaborate on their productivity goals.</p>
+        </div>
+        
+        <div style="background: #f8fafc; padding: 25px; border-radius: 8px; margin-bottom: 25px;">
+          <h3 style="color: #1e293b; margin: 0 0 15px 0;">Team Invitation Details</h3>
+          <p style="color: #475569; margin: 0 0 10px 0;"><strong>Inviter:</strong> ${inviterName}</p>
+          <p style="color: #475569; margin: 0 0 20px 0;"><strong>Role:</strong> ${role.charAt(0).toUpperCase() + role.slice(1)}</p>
+          <p style="color: #475569; margin: 0 0 20px 0;">
+            Join their team to collaborate on tasks, share habits, and achieve productivity goals together.
+          </p>
+          <div style="text-align: center;">
+            <a href="${FRONTEND_URL}" 
+               style="display: inline-block; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; text-decoration: none; padding: 12px 30px; border-radius: 6px; font-weight: bold;">
+              Accept Invitation
+            </a>
+          </div>
+        </div>
+        
+        <div style="background: #f1f5f9; padding: 20px; border-radius: 8px; margin-bottom: 25px;">
+          <h4 style="color: #1e293b; margin: 0 0 10px 0;">What You Can Do:</h4>
+          <ul style="color: #475569; margin: 0; padding-left: 20px;">
+            <li>Collaborate on shared tasks and projects</li>
+            <li>Track team productivity metrics</li>
+            <li>Share habits and motivation</li>
+            <li>Use collaborative planning tools</li>
+            <li>Join team focus sessions</li>
+          </ul>
+        </div>
+        
+        <div style="text-align: center; padding: 20px; color: #64748b; font-size: 14px;">
+          <p>If you don't want to join this team, you can safely ignore this email.</p>
+          <p>This invitation will expire in 7 days.</p>
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;">
+          <p>© 2025 Productivity Hub. Built for modern teams.</p>
+        </div>
+      </div>
+    `
+  };
+  
+  return await sendEmail(emailContent);
+}
+
+// Invitation cancellation email sending function
+async function sendInvitationCancellationEmail(email: string, cancelledBy: string): Promise<boolean> {
+  const FRONTEND_URL = process.env.FRONTEND_URL || (process.env.REPLIT_DEV_DOMAIN 
+    ? `https://${process.env.REPLIT_DEV_DOMAIN}` 
+    : 'http://localhost:5000');
+    
+  const emailContent = {
+    to: email,
+    from: getDisplayFromAddress('noreply'),
+    subject: `Team invitation cancelled - Productivity Hub`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h1 style="color: #3b82f6; margin: 0;">Productivity Hub</h1>
+          <p style="color: #64748b; margin: 5px 0;">Team Collaboration Platform</p>
+        </div>
+        
+        <div style="background: linear-gradient(135deg, #64748b, #94a3b8); padding: 30px; border-radius: 12px; text-align: center; margin-bottom: 30px;">
+          <h2 style="color: white; margin: 0 0 15px 0;">Team Invitation Cancelled</h2>
+          <p style="color: #f1f5f9; margin: 0;">Your team invitation has been cancelled by ${cancelledBy}.</p>
+        </div>
+        
+        <div style="background: #f8fafc; padding: 25px; border-radius: 8px; margin-bottom: 25px;">
+          <h3 style="color: #1e293b; margin: 0 0 15px 0;">What This Means</h3>
+          <p style="color: #475569; margin: 0 0 15px 0;">
+            The team invitation that was previously sent to you is no longer valid. You will not be able to join the team using the previous invitation link.
+          </p>
+          <p style="color: #475569; margin: 0 0 20px 0;">
+            If this was done in error, please contact ${cancelledBy} directly to request a new invitation.
+          </p>
+        </div>
+        
+        <div style="background: #f1f5f9; padding: 20px; border-radius: 8px; margin-bottom: 25px;">
+          <h4 style="color: #1e293b; margin: 0 0 10px 0;">Want to Join a Different Team?</h4>
+          <p style="color: #475569; margin: 0 0 15px 0;">
+            You can still create your own productivity workspace or join other teams with valid invitations.
+          </p>
+          <div style="text-align: center;">
+            <a href="${FRONTEND_URL}" 
+               style="display: inline-block; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; text-decoration: none; padding: 12px 30px; border-radius: 6px; font-weight: bold;">
+              Visit Productivity Hub
+            </a>
+          </div>
+        </div>
+        
+        <div style="text-align: center; padding: 20px; color: #64748b; font-size: 14px;">
+          <p>If you have any questions, please contact the team administrator.</p>
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;">
+          <p>© 2025 Productivity Hub. Built for modern teams.</p>
+        </div>
+      </div>
+    `
+  };
+  
+  return await sendEmail(emailContent);
+}
+
+export async function registerRoutes(app: Express): Promise<Server> {
+  // Authentication routes
+  app.use('/api/auth', authRoutes);
+
+  // CRITICAL: Data backup and export endpoints
+  
+  // Excel export endpoint
+  app.get("/api/export/excel", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const backupData = await exportUserData(userId);
+      const parsedData = JSON.parse(backupData);
+      const timestamp = new Date().toISOString().split('T')[0];
+      
+      // Generate Excel file
+      const excelBuffer = createExcelWorkbook(parsedData, userId);
+      
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="productivity_export_${userId}_${timestamp}.xlsx"`);
+      res.setHeader('Content-Length', excelBuffer.length.toString());
+      
+      res.send(excelBuffer);
+    } catch (error) {
+      console.error('Excel export failed:', error);
+      res.status(500).json({ message: "Failed to create Excel export" });
+    }
+  });
+
+  app.get("/api/export/data", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const backupData = await exportUserData(userId);
+      
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', `attachment; filename="productivity_backup_${userId}_${new Date().toISOString().split('T')[0]}.json"`);
+      res.send(backupData);
+    } catch (error) {
+      console.error('Export failed:', error);
+      res.status(500).json({ message: "Failed to export data" });
+    }
+  });
+
+  app.get("/api/backup/create", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const backup = await createDataBackup(userId);
+      
+      res.json({
+        message: "Backup created successfully",
+        backup,
+        timestamp: backup.timestamp,
+        totalRecords: backup.metadata.totalRecords
+      });
+    } catch (error) {
+      console.error('Backup creation failed:', error);
+      res.status(500).json({ message: "Failed to create backup" });
+    }
+  });
+
+  // Download data as ZIP file
+  app.get("/api/export/zip", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const backupData = await exportUserData(userId);
+      const timestamp = new Date().toISOString().split('T')[0];
+      
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="productivity_backup_${userId}_${timestamp}.zip"`);
+      
+      const archive = archiver('zip', {
+        zlib: { level: 9 } // Maximum compression
+      });
+      
+      archive.pipe(res);
+      
+      // Add the JSON backup file
+      archive.append(JSON.stringify(backupData, null, 2), { 
+        name: `productivity_backup_${timestamp}.json` 
+      });
+      
+      // Add individual CSV files for each data type
+      const backup = JSON.parse(backupData);
+      
+      if (backup.tasks && backup.tasks.length > 0) {
+        const tasksCsv = convertToCSV(backup.tasks);
+        archive.append(tasksCsv, { name: 'tasks.csv' });
+      }
+      
+      if (backup.habits && backup.habits.length > 0) {
+        const habitsCsv = convertToCSV(backup.habits);
+        archive.append(habitsCsv, { name: 'habits.csv' });
+      }
+      
+      if (backup.habitEntries && backup.habitEntries.length > 0) {
+        const habitEntriesCsv = convertToCSV(backup.habitEntries);
+        archive.append(habitEntriesCsv, { name: 'habit_entries.csv' });
+      }
+      
+      if (backup.pomodoroSessions && backup.pomodoroSessions.length > 0) {
+        const pomodoroSessionsCsv = convertToCSV(backup.pomodoroSessions);
+        archive.append(pomodoroSessionsCsv, { name: 'pomodoro_sessions.csv' });
+      }
+      
+      // Add a README file
+      const readme = `Productivity Hub Data Export
+============================
+
+Export Date: ${new Date().toISOString()}
+User ID: ${userId}
+
+Files Included:
+- productivity_backup_${timestamp}.json: Complete data backup in JSON format
+- tasks.csv: All your tasks and their details
+- habits.csv: Your habit definitions and settings
+- habit_entries.csv: Daily habit completion records
+- pomodoro_sessions.csv: Focus session history
+
+This export contains all your productivity data for backup and analysis purposes.
+You can import this data back into Productivity Hub or use it with other tools.
+
+For support, contact: support@productivityhub.com
+`;
+      
+      archive.append(readme, { name: 'README.txt' });
+      
+      await archive.finalize();
+      
+    } catch (error) {
+      console.error('ZIP export failed:', error);
+      res.status(500).json({ message: "Failed to create ZIP export" });
+    }
+  });
+  // Enhanced task carry-forward endpoint
+  app.post("/api/tasks/carry-forward", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const { fromWeekKey, toWeekKey } = req.body;
+      
+      if (!fromWeekKey || !toWeekKey) {
+        return res.status(400).json({ message: "fromWeekKey and toWeekKey are required" });
+      }
+      
+      const carriedTasks = await storage.carryForwardTasks(userId, fromWeekKey, toWeekKey);
+      
+      res.json({ 
+        message: `${carriedTasks.length} tasks carried forward to next week`,
+        carriedTasks: carriedTasks.length,
+        tasks: carriedTasks
+      });
+    } catch (error) {
+      console.error('Error carrying forward tasks:', error);
+      res.status(500).json({ message: "Failed to carry forward tasks" });
+    }
+  });
+
+  // Get tasks by week
+  app.get("/api/tasks/week/:weekKey", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const { weekKey } = req.params;
+      const tasks = await storage.getTasksByWeek(userId, weekKey);
+      res.json(tasks);
+    } catch (error) {
+      console.error('Error fetching tasks by week:', error);
+      res.status(500).json({ message: "Failed to fetch tasks for week" });
+    }
+  });
+
+  // Tasks
+  app.get("/api/tasks", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const tasks = await storage.getTasks(userId);
+      res.json(tasks);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch tasks" });
+    }
+  });
+
+  app.post("/api/tasks", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      console.log('Task creation request body:', req.body);
+      console.log('User ID:', userId);
+      
+      // Ensure userId is properly included in the task data
+      const taskData = {
+        ...req.body,
+        userId: userId
+      };
+      console.log('Task data with userId:', taskData);
+      
+      const task = insertTaskSchema.parse(taskData);
+      console.log('Parsed task data:', task);
+      
+      const createdTask = await storage.createTask(task);
+      console.log('Created task:', createdTask);
+      res.json(createdTask);
+    } catch (error: any) {
+      console.error('Task creation error:', error);
+      if (error instanceof z.ZodError) {
+        console.error('Validation errors:', error.errors);
+        res.status(400).json({ message: "Invalid task data", errors: error.errors });
+      } else {
+        res.status(500).json({ message: "Failed to create task", error: error?.message || 'Unknown error' });
+      }
+    }
+  });
+
+  app.put("/api/tasks/:id", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = req.user!.id;
+      const updates = insertTaskSchema.partial().parse(req.body);
+      
+      // Check if task exists before updating to prevent duplicates
+      const existingTask = await storage.getTask(id, userId);
+      if (!existingTask) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      const updatedTask = await storage.updateTask(id, userId, updates);
+      res.json(updatedTask);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ message: "Invalid task data", errors: error.errors });
+      } else {
+        res.status(500).json({ message: "Failed to update task" });
+      }
+    }
+  });
+
+  app.delete("/api/tasks/:id", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = req.user!.id;
+      const deleted = await storage.deleteTask(id, userId);
+      if (deleted) {
+        res.json({ success: true });
+      } else {
+        res.status(404).json({ message: "Task not found" });
+      }
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete task" });
+    }
+  });
+
+  // Habits
+  app.get("/api/habits", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const habits = await storage.getHabits(userId);
+      res.json(habits);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch habits" });
+    }
+  });
+
+  app.post("/api/habits", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const habit = insertHabitSchema.parse({...req.body, userId});
+      const createdHabit = await storage.createHabit(habit);
+      res.json(createdHabit);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ message: "Invalid habit data", errors: error.errors });
+      } else {
+        res.status(500).json({ message: "Failed to create habit" });
+      }
+    }
+  });
+
+  app.put("/api/habits/:id", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = req.user!.id;
+      const updates = insertHabitSchema.partial().parse(req.body);
+      const updatedHabit = await storage.updateHabit(id, userId, updates);
+      res.json(updatedHabit);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ message: "Invalid habit data", errors: error.errors });
+      } else {
+        res.status(500).json({ message: "Failed to update habit" });
+      }
+    }
+  });
+
+  app.delete("/api/habits/:id", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = req.user!.id;
+      const deleted = await storage.deleteHabit(id, userId);
+      if (deleted) {
+        res.json({ success: true });
+      } else {
+        res.status(404).json({ message: "Habit not found" });
+      }
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete habit" });
+    }
+  });
+
+  // Habit Entries
+  app.get("/api/habit-entries", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const habitId = req.query.habitId ? parseInt(req.query.habitId as string) : undefined;
+      const date = req.query.date as string;
+      const entries = await storage.getHabitEntries(userId, habitId, date);
+      res.json(entries);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch habit entries" });
+    }
+  });
+
+  app.post("/api/habit-entries/toggle", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const { habitId, date } = req.body;
+      const entry = await storage.toggleHabitEntry(habitId, date, userId);
+      res.json(entry);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to toggle habit entry" });
+    }
+  });
+
+  // Pomodoro Sessions
+  app.get("/api/pomodoro-sessions", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const sessions = await storage.getPomodoroSessions(userId);
+      res.json(sessions);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch pomodoro sessions" });
+    }
+  });
+
+  app.post("/api/pomodoro-sessions", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const session = insertPomodoroSessionSchema.parse({...req.body, userId});
+      const createdSession = await storage.createPomodoroSession(session);
+      res.json(createdSession);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ message: "Invalid session data", errors: error.errors });
+      } else {
+        res.status(500).json({ message: "Failed to create session" });
+      }
+    }
+  });
+
+  // Enhanced API routes for comprehensive features
+  
+  // Goals API - fully authenticated, persisted to DB
+  app.get("/api/goals", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const userGoals = await storage.getGoals(userId);
+      res.json(userGoals);
+    } catch (error) {
+      console.error("Error fetching goals:", error);
+      res.status(500).json({ message: "Failed to fetch goals" });
+    }
+  });
+
+  app.post("/api/goals", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const { title, description, category, targetValue, currentValue, unit, deadline, priority, status } = req.body;
+      if (!title || !targetValue || !unit || !deadline || !category) {
+        return res.status(400).json({ message: "title, targetValue, unit, deadline, and category are required" });
+      }
+      const goal = await storage.createGoal({
+        userId,
+        title,
+        description: description || null,
+        category,
+        targetValue: Number(targetValue),
+        currentValue: Number(currentValue || 0),
+        unit,
+        deadline,
+        priority: priority || "medium",
+        status: status || "active",
+      });
+      res.json(goal);
+    } catch (error) {
+      console.error("Error creating goal:", error);
+      res.status(500).json({ message: "Failed to create goal" });
+    }
+  });
+
+  app.put("/api/goals/:id", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const id = parseInt(req.params.id);
+      const updates = { ...req.body };
+      if (updates.targetValue !== undefined) updates.targetValue = Number(updates.targetValue);
+      if (updates.currentValue !== undefined) updates.currentValue = Number(updates.currentValue);
+      const goal = await storage.updateGoal(id, userId, updates);
+      res.json(goal);
+    } catch (error) {
+      console.error("Error updating goal:", error);
+      res.status(500).json({ message: "Failed to update goal" });
+    }
+  });
+
+  app.delete("/api/goals/:id", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deleteGoal(id, userId);
+      if (!deleted) return res.status(404).json({ message: "Goal not found" });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting goal:", error);
+      res.status(500).json({ message: "Failed to delete goal" });
+    }
+  });
+
+  // Notifications API
+  app.get("/api/notifications", async (req, res) => {
+    try {
+      const notifications: any[] = [];
+      res.json(notifications);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch notifications" });
+    }
+  });
+
+  // Analytics API
+  app.get("/api/analytics/productivity", async (req, res) => {
+    try {
+      const analytics = {
+        tasksCompleted: 15,
+        habitsCompleted: 42,
+        pomodoroSessions: 28,
+        productivityScore: 85
+      };
+      res.json(analytics);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch analytics" });
+    }
+  });
+
+  // Team collaboration API
+  app.get("/api/team/members", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      
+      // First, get the user's team
+      const team = await storage.getTeamByUserId(userId);
+      if (!team) {
+        // If user has no team yet, create one for them
+        const newTeam = await storage.createTeam({
+          name: `${req.user!.name}'s Team`,
+          description: "Personal productivity workspace",
+          ownerId: userId
+        });
+        
+        // Return the new team owner as the only member
+        const members = await storage.getTeamMembers(newTeam.id);
+        return res.json(members);
+      }
+      
+      // Get existing team members
+      const members = await storage.getTeamMembers(team.id);
+      res.json(members);
+    } catch (error) {
+      console.error("Error fetching team members:", error);
+      res.status(500).json({ message: "Failed to fetch team members" });
+    }
+  });
+
+  app.get("/api/team/invitations", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      
+      // Get the user's team
+      const team = await storage.getTeamByUserId(userId);
+      if (!team) {
+        return res.json([]);
+      }
+      
+      // Get pending invitations for the team
+      const invitations = await storage.getTeamInvitations(team.id);
+      res.json(invitations);
+    } catch (error) {
+      console.error("Error fetching team invitations:", error);
+      res.status(500).json({ message: "Failed to fetch team invitations" });
+    }
+  });
+
+  app.post("/api/team/invite", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const { email, role, inviterName } = req.body;
+      
+      if (!email || !email.includes('@')) {
+        return res.status(400).json({ message: "Valid email is required" });
+      }
+      
+      // Get the user's team
+      const team = await storage.getTeamByUserId(userId);
+      if (!team) {
+        return res.status(404).json({ message: "No team found" });
+      }
+      
+      // Create the invitation (expires in 7 days)
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7);
+      
+      const invitation = await storage.createTeamInvitation({
+        teamId: team.id,
+        email,
+        role: role || "member",
+        invitedBy: userId,
+        expiresAt
+      });
+      
+      // Send invitation email
+      try {
+        const emailSent = await sendTeamInvitationEmail(email, inviterName || "Team Member", role || "member");
+        if (emailSent) {
+          console.log("✅ Team invitation email sent successfully to:", email);
+        } else {
+          console.log("⚠️ Team invitation email failed to send to:", email, "(continuing without email)");
+        }
+      } catch (emailError) {
+        console.error("❌ Failed to send team invitation email:", emailError);
+        console.log("⚠️ Continuing without email notification due to error");
+      }
+      
+      res.json(invitation);
+    } catch (error) {
+      console.error("Error sending team invitation:", error);
+      res.status(500).json({ message: "Failed to send invitation" });
+    }
+  });
+
+  // Delete team invitation
+  app.delete("/api/team/invitations/:invitationId", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const invitationId = parseInt(req.params.invitationId);
+      
+      // Get the user's team to verify they have permission
+      const team = await storage.getTeamByUserId(userId);
+      if (!team) {
+        return res.status(404).json({ message: "No team found" });
+      }
+      
+      // Check if the current user has permission to delete invitations (must be owner or admin)
+      const currentUserMember = await storage.getTeamMemberByUserAndTeam(userId, team.id);
+      if (!currentUserMember || !['owner', 'admin'].includes(currentUserMember.role)) {
+        return res.status(403).json({ message: "Insufficient permissions to delete invitations" });
+      }
+      
+      // Get the invitation to verify it belongs to this team
+      const invitation = await storage.getTeamInvitationById(invitationId);
+      if (!invitation || invitation.teamId !== team.id) {
+        return res.status(404).json({ message: "Invitation not found" });
+      }
+      
+      // Delete the invitation
+      await storage.deleteTeamInvitation(invitationId);
+      
+      // Send cancellation email notification
+      try {
+        // Get user name for email 
+        const currentUser = await storage.getUserById(userId);
+        await sendInvitationCancellationEmail(invitation.email, currentUser?.name || "Team Admin");
+        console.log("✅ Invitation cancellation email sent to:", invitation.email);
+      } catch (emailError) {
+        console.error("❌ Failed to send cancellation email:", emailError);
+        console.log("⚠️ Continuing without email notification due to error");
+      }
+      
+      res.json({ message: "Invitation deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting team invitation:", error);
+      res.status(500).json({ message: "Failed to delete invitation" });
+    }
+  });
+
+  // Update team member role
+  app.put("/api/team/members/:memberId/role", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const memberId = parseInt(req.params.memberId);
+      const { role } = req.body;
+      
+      if (!role || !['viewer', 'member', 'admin'].includes(role)) {
+        return res.status(400).json({ message: "Valid role is required" });
+      }
+      
+      // Get the user's team to verify they have permission
+      const team = await storage.getTeamByUserId(userId);
+      if (!team) {
+        return res.status(404).json({ message: "No team found" });
+      }
+      
+      // Check if the current user has permission to modify roles (must be owner or admin)
+      const currentUserMember = await storage.getTeamMemberByUserAndTeam(userId, team.id);
+      if (!currentUserMember || !['owner', 'admin'].includes(currentUserMember.role)) {
+        return res.status(403).json({ message: "Insufficient permissions to modify roles" });
+      }
+      
+      // Cannot change owner role or modify owner's role
+      const targetMember = await storage.getTeamMemberById(memberId);
+      if (!targetMember || targetMember.role === 'owner') {
+        return res.status(403).json({ message: "Cannot modify owner role" });
+      }
+      
+      // Update the role
+      const updatedMember = await storage.updateTeamMemberRole(memberId, role);
+      res.json(updatedMember);
+    } catch (error) {
+      console.error("Error updating team member role:", error);
+      res.status(500).json({ message: "Failed to update role" });
+    }
+  });
+
+  // Reset all user data
+  app.delete("/api/user/reset-data", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+      const success = await storage.resetAllUserData(userId);
+      
+      if (success) {
+        res.json({ message: "All data has been reset successfully" });
+      } else {
+        res.status(500).json({ message: "Failed to reset data" });
+      }
+    } catch (error) {
+      console.error("Error resetting user data:", error);
+      res.status(500).json({ message: "Failed to reset data" });
+    }
+  });
+
+  // Profile photo upload - get upload URL
+  app.post("/api/profile/photo/upload-url", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const objectStorageService = new ObjectStorageService();
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      res.json({ uploadURL });
+    } catch (error) {
+      console.error("Error getting photo upload URL:", error);
+      res.status(500).json({ error: "Failed to get upload URL" });
+    }
+  });
+
+  // Update profile photo after upload
+  app.put("/api/profile/photo", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    const { photoURL } = req.body;
+    if (!photoURL) {
+      return res.status(400).json({ error: "photoURL is required" });
+    }
+
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+      
+      const objectStorageService = new ObjectStorageService();
+      
+      // Make the photo publicly accessible
+      const objectPath = await objectStorageService.trySetObjectEntityAclPolicy(
+        photoURL,
+        {
+          owner: String(userId),
+          visibility: "public",
+        },
+      );
+
+      res.status(200).json({
+        objectPath: objectPath,
+        message: "Profile photo updated successfully"
+      });
+    } catch (error) {
+      console.error("Error updating profile photo:", error);
+      res.status(500).json({ error: "Failed to update profile photo" });
+    }
+  });
+
+  // Video/demo content upload and serving
+  
+  // Serve public assets (including demo videos)
+  app.get("/public-objects/:filePath(*)", async (req, res) => {
+    const filePath = req.params.filePath;
+    const objectStorageService = new ObjectStorageService();
+    try {
+      const file = await objectStorageService.searchPublicObject(filePath);
+      if (!file) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      objectStorageService.downloadObject(file, res);
+    } catch (error) {
+      console.error("Error searching for public object:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Video upload endpoint for demo content
+  app.post("/api/demo/upload", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const objectStorageService = new ObjectStorageService();
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      res.json({ uploadURL });
+    } catch (error) {
+      console.error("Error getting upload URL:", error);
+      res.status(500).json({ error: "Failed to get upload URL" });
+    }
+  });
+
+  // Update demo video URL after upload
+  app.put("/api/demo/video", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    if (!req.body.videoURL) {
+      return res.status(400).json({ error: "videoURL is required" });
+    }
+
+    try {
+      const objectStorageService = new ObjectStorageService();
+      const objectPath = await objectStorageService.trySetObjectEntityAclPolicy(
+        req.body.videoURL,
+        {
+          owner: "system",
+          visibility: "public", // Demo videos should be publicly accessible
+        },
+      );
+
+      // In a real app, you'd store this in the database
+      // For now, we'll just return the path
+      res.status(200).json({
+        objectPath: objectPath,
+        message: "Demo video uploaded successfully"
+      });
+    } catch (error) {
+      console.error("Error setting demo video:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  const httpServer = createServer(app);
+  return httpServer;
+}

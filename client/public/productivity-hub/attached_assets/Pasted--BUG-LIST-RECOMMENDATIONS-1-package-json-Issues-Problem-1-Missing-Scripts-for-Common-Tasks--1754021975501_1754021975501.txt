@@ -1,0 +1,126 @@
+🐞 BUG LIST & RECOMMENDATIONS
+1. 🚫 package.json Issues
+Problem 1: Missing Scripts for Common Tasks
+
+No dev, build, or start scripts defined.
+
+Without these, running locally or deploying can confuse new developers.
+
+✅ Fix:
+Add this to your package.json:
+
+json
+Copy
+Edit
+"scripts": {
+  "dev": "vite",
+  "build": "vite build",
+  "preview": "vite preview"
+}
+2. ⚙️ vite.config.ts – Missing Production Optimizations
+Problem 2: No plugin used for bundle visualization or compression
+
+You're not using any plugin like vite-plugin-compression for gzip.
+
+No bundle analyzer is present to inspect build sizes.
+
+✅ Fix:
+Install and use:
+
+bash
+Copy
+Edit
+npm install vite-plugin-compression rollup-plugin-visualizer --save-dev
+Then in vite.config.ts:
+
+ts
+Copy
+Edit
+import viteCompression from 'vite-plugin-compression';
+import { visualizer } from 'rollup-plugin-visualizer';
+
+export default defineConfig({
+  plugins: [
+    react(), 
+    viteCompression(), 
+    visualizer({ open: true })
+  ]
+});
+3. 🎨 tailwind.config.ts – Potential UI Bloat
+Problem 3: Missing Purge Configuration
+
+Tailwind may be including unused classes in production build.
+
+✅ Fix:
+Ensure this is added:
+
+ts
+Copy
+Edit
+content: [
+  './index.html',
+  './src/**/*.{js,ts,jsx,tsx}'
+],
+Problem 4: No Custom Theme or Tokens
+
+Missing brand colors, font sizes, spacing scale, etc.
+
+✅ Fix:
+Extend the theme for brand consistency:
+
+ts
+Copy
+Edit
+theme: {
+  extend: {
+    colors: {
+      brand: '#1a73e8',
+    }
+  }
+}
+4. 📦 Drizzle ORM – Configuration Looks Incomplete
+Problem 5: drizzle.config.ts is mostly boilerplate
+
+No environment differentiation (dev vs prod).
+
+No schema or migration path mentioned.
+
+✅ Fix:
+Ensure you define paths like:
+
+ts
+Copy
+Edit
+schema: './src/db/schema.ts',
+out: './drizzle/migrations',
+5. 🧠 TypeScript – Loose Configuration
+Problem 6: tsconfig.json is not strict
+
+"strict": false leads to weak typing and runtime bugs.
+
+✅ Fix:
+Enable strict mode:
+
+json
+Copy
+Edit
+"strict": true,
+"noImplicitAny": true,
+"skipLibCheck": true,
+"forceConsistentCasingInFileNames": true
+6. 🧩 Component System (components.json)
+Problem 7: Unused or empty
+
+This file appears to be a stub or not utilized.
+
+If you’re not using a tool like shadcn/ui or Bit.dev, this may be redundant.
+
+✅ Fix:
+
+Remove if not used, or integrate with an actual design system.
+
+⚡️ OTHER RECOMMENDATIONS
+7. 🚀 Performance
+Add lazy-loading for non-critical components.
+
+Consider react-lazy, Suspense, or code-splitting.

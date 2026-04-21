@@ -1,0 +1,10 @@
+run = "node index.js"
+modules = ["nodejs-20"]
+
+[deployment]
+build = ["sh", "-c", "npm install"]
+deploymentTarget = "autoscale"
+run = ["sh", "-c", "node dist/index.js"]
+
+[nix]
+channel = "stable-25_05"
