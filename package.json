@@ -100,7 +100,7 @@
     "docx": "^9.5.1",
     "dom-helpers": "^5.2.1",
     "drizzle-kit": "^0.30.4",
-    "drizzle-orm": "^0.39.1",
+    "drizzle-orm": "^0.39.3",
     "drizzle-zod": "^0.7.0",
     "dunder-proto": "^1.0.1",
     "duplexify": "^4.1.3",
