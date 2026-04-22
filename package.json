@@ -466,7 +466,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node dist/index.js",
-    "build": "vite build && esbuild server/index.ts --storage-optimizations --bundle --platform=node --outfile=dist/index.js --format=esm --external:fsevents"
+    "build": "vite build client --outDir ../dist/public && esbuild server/index.ts --storage-optimizations --bundle --platform=node --outfile=dist/index.js --format=esm --external:fsevents"
   },
   "keywords": [],
   "author": "",
