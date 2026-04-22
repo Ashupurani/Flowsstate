@@ -237,7 +237,6 @@ import pg from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import * as schema from '../shared/schema';
 
-// Use the standard Postgres Pool for Render
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
 });
