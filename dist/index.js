@@ -4,13 +4,13 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// server/index.ts
+// client/public/productivity-hub/server/index.ts
 import express2 from "express";
 
-// server/routes.ts
+// client/public/productivity-hub/server/routes.ts
 import { createServer } from "http";
 
-// shared/schema.ts
+// client/public/productivity-hub/shared/schema.ts
 var schema_exports = {};
 __export(schema_exports, {
   enhancedTasks: () => enhancedTasks,
@@ -232,18 +232,14 @@ var insertTaskTimeEntrySchema = createInsertSchema(taskTimeEntries).omit({
   id: true
 });
 
-// server/db.ts
-import pg from 'pg';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import * as schema from '../shared/schema';
+// client/public/productivity-hub/server/db.ts
+import pg from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
+var { Pool } = pg;
+var pool = new Pool({ connectionString: process.env.DATABASE_URL });
+var db = drizzle(pool, { schema: schema_exports });
 
-const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
-});
-
-export const db = drizzle(pool, { schema });
-
-// server/storage.ts
+// client/public/productivity-hub/server/storage.ts
 import { eq, and, ne, lt } from "drizzle-orm";
 var DatabaseStorage = class {
   constructor() {
@@ -388,6 +384,27 @@ var DatabaseStorage = class {
       return false;
     }
   }
+  // Goals - User-specific
+  async getGoals(userId) {
+    return await db.select().from(goals).where(eq(goals.userId, userId));
+  }
+  async getGoal(id, userId) {
+    const [goal] = await db.select().from(goals).where(and(eq(goals.id, id), eq(goals.userId, userId)));
+    return goal;
+  }
+  async createGoal(goal) {
+    const [created] = await db.insert(goals).values(goal).returning();
+    return created;
+  }
+  async updateGoal(id, userId, updates) {
+    const [updated] = await db.update(goals).set(updates).where(and(eq(goals.id, id), eq(goals.userId, userId))).returning();
+    if (!updated) throw new Error(`Goal with id ${id} not found`);
+    return updated;
+  }
+  async deleteGoal(id, userId) {
+    const result = await db.delete(goals).where(and(eq(goals.id, id), eq(goals.userId, userId)));
+    return (result.rowCount || 0) > 0;
+  }
   // Users
   async getUserById(id) {
     const [user] = await db.select().from(users).where(eq(users.id, id));
@@ -506,15 +523,15 @@ var DatabaseStorage = class {
 };
 var storage = new DatabaseStorage();
 
-// server/authRoutes.ts
+// client/public/productivity-hub/server/authRoutes.ts
 import { Router } from "express";
 import { body, validationResult } from "express-validator";
 
-// server/auth.ts
+// client/public/productivity-hub/server/auth.ts
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 
-// server/email.ts
+// client/public/productivity-hub/server/email.ts
 import { Resend } from "resend";
 var VERIFIED_SENDER = process.env.VERIFIED_SENDER_EMAIL || "delivered@resend.dev";
 var DOMAIN = process.env.EMAIL_DOMAIN || "resend.dev";
@@ -583,7 +600,7 @@ async function sendEmail(emailData) {
   }
 }
 
-// server/auth.ts
+// client/public/productivity-hub/server/auth.ts
 var JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-for-development";
 var FRONTEND_URL = process.env.FRONTEND_URL || (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : "http://localhost:5000");
 async function hashPassword(password) {
@@ -718,7 +735,7 @@ async function sendWelcomeEmail(email, name) {
   return await sendEmail(emailContent);
 }
 
-// server/authRoutes.ts
+// client/public/productivity-hub/server/authRoutes.ts
 var router = Router();
 router.post("/register", [
   body("email").isEmail().normalizeEmail(),
@@ -886,7 +903,7 @@ router.post("/logout", (req, res) => {
 });
 var authRoutes_default = router;
 
-// server/middleware.ts
+// client/public/productivity-hub/server/middleware.ts
 var authenticateToken = (req, res, next) => {
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1];
@@ -906,14 +923,14 @@ var authenticateToken = (req, res, next) => {
   next();
 };
 
-// server/routes.ts
+// client/public/productivity-hub/server/routes.ts
 import { z } from "zod";
 
-// server/objectStorage.ts
+// client/public/productivity-hub/server/objectStorage.ts
 import { Storage } from "@google-cloud/storage";
 import { randomUUID } from "crypto";
 
-// server/objectAcl.ts
+// client/public/productivity-hub/server/objectAcl.ts
 var ACL_POLICY_METADATA_KEY = "custom:aclPolicy";
 function isPermissionAllowed(requested, granted) {
   if (requested === "read" /* READ */) {
@@ -984,7 +1001,7 @@ async function canAccessObject({
   return false;
 }
 
-// server/objectStorage.ts
+// client/public/productivity-hub/server/objectStorage.ts
 var REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
 var objectStorageClient = new Storage({
   credentials: {
@@ -1018,7 +1035,7 @@ var ObjectStorageService = class {
     const pathsStr = process.env.PUBLIC_OBJECT_SEARCH_PATHS || "";
     const paths = Array.from(
       new Set(
-        pathsStr.split(",").map((path3) => path3.trim()).filter((path3) => path3.length > 0)
+        pathsStr.split(",").map((path2) => path2.trim()).filter((path2) => path2.length > 0)
       )
     );
     if (paths.length === 0) {
@@ -1159,11 +1176,11 @@ var ObjectStorageService = class {
     });
   }
 };
-function parseObjectPath(path3) {
-  if (!path3.startsWith("/")) {
-    path3 = `/${path3}`;
+function parseObjectPath(path2) {
+  if (!path2.startsWith("/")) {
+    path2 = `/${path2}`;
   }
-  const pathParts = path3.split("/");
+  const pathParts = path2.split("/");
   if (pathParts.length < 3) {
     throw new Error("Invalid path: must contain at least a bucket name");
   }
@@ -1205,7 +1222,7 @@ async function signObjectURL({
   return signedURL;
 }
 
-// server/backup.ts
+// client/public/productivity-hub/server/backup.ts
 async function createDataBackup(userId) {
   try {
     const timestamp2 = (/* @__PURE__ */ new Date()).toISOString();
@@ -1240,7 +1257,7 @@ async function exportUserData(userId) {
   return JSON.stringify(backup, null, 2);
 }
 
-// server/routes.ts
+// client/public/productivity-hub/server/routes.ts
 import archiver from "archiver";
 import * as XLSX from "xlsx";
 function convertToCSV(data) {
@@ -1800,34 +1817,65 @@ For support, contact: support@productivityhub.com
       }
     }
   });
-  app2.get("/api/goals", async (req, res) => {
+  app2.get("/api/goals", authenticateToken, async (req, res) => {
     try {
-      const goals2 = [
-        {
-          id: 1,
-          title: "Complete 100 Pomodoro Sessions",
-          description: "Improve focus and productivity",
-          category: "Productivity",
-          targetValue: 100,
-          currentValue: 23,
-          unit: "sessions",
-          deadline: "2025-12-31",
-          priority: "high",
-          status: "active",
-          createdAt: "2025-01-01"
-        }
-      ];
-      res.json(goals2);
+      const userId = req.user.id;
+      const userGoals = await storage.getGoals(userId);
+      res.json(userGoals);
     } catch (error) {
+      console.error("Error fetching goals:", error);
       res.status(500).json({ message: "Failed to fetch goals" });
     }
   });
-  app2.post("/api/goals", async (req, res) => {
+  app2.post("/api/goals", authenticateToken, async (req, res) => {
     try {
-      const goal = { id: Date.now(), ...req.body, createdAt: (/* @__PURE__ */ new Date()).toISOString() };
+      const userId = req.user.id;
+      const { title, description, category, targetValue, currentValue, unit, deadline, priority, status } = req.body;
+      if (!title || !targetValue || !unit || !deadline || !category) {
+        return res.status(400).json({ message: "title, targetValue, unit, deadline, and category are required" });
+      }
+      const goal = await storage.createGoal({
+        userId,
+        title,
+        description: description || null,
+        category,
+        targetValue: Number(targetValue),
+        currentValue: Number(currentValue || 0),
+        unit,
+        deadline,
+        priority: priority || "medium",
+        status: status || "active"
+      });
       res.json(goal);
     } catch (error) {
+      console.error("Error creating goal:", error);
       res.status(500).json({ message: "Failed to create goal" });
+    }
+  });
+  app2.put("/api/goals/:id", authenticateToken, async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const id = parseInt(req.params.id);
+      const updates = { ...req.body };
+      if (updates.targetValue !== void 0) updates.targetValue = Number(updates.targetValue);
+      if (updates.currentValue !== void 0) updates.currentValue = Number(updates.currentValue);
+      const goal = await storage.updateGoal(id, userId, updates);
+      res.json(goal);
+    } catch (error) {
+      console.error("Error updating goal:", error);
+      res.status(500).json({ message: "Failed to update goal" });
+    }
+  });
+  app2.delete("/api/goals/:id", authenticateToken, async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deleteGoal(id, userId);
+      if (!deleted) return res.status(404).json({ message: "Goal not found" });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting goal:", error);
+      res.status(500).json({ message: "Failed to delete goal" });
     }
   });
   app2.get("/api/notifications", async (req, res) => {
@@ -2085,48 +2133,17 @@ For support, contact: support@productivityhub.com
   return httpServer;
 }
 
-// server/vite.ts
+// client/public/productivity-hub/server/vite.ts
 import express from "express";
 import fs from "fs";
-import path2 from "path";
+import path from "path";
 import { createServer as createViteServer, createLogger } from "vite";
 
-// vite.config.ts
+// client/public/productivity-hub/vite.config.ts
 import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import path from "path";
-import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
-var vite_config_default = defineConfig({
-  plugins: [
-    react(),
-    runtimeErrorOverlay(),
-    ...process.env.NODE_ENV !== "production" && process.env.REPL_ID !== void 0 ? [
-      await import("@replit/vite-plugin-cartographer").then(
-        (m) => m.cartographer()
-      )
-    ] : []
-  ],
-  resolve: {
-    alias: {
-      "@": path.resolve(import.meta.dirname, "client", "src"),
-      "@shared": path.resolve(import.meta.dirname, "shared"),
-      "@assets": path.resolve(import.meta.dirname, "attached_assets")
-    }
-  },
-  root: path.resolve(import.meta.dirname, "client"),
-  build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
-    emptyOutDir: true
-  },
-  server: {
-    fs: {
-      strict: true,
-      deny: ["**/.*"]
-    }
-  }
-});
+var vite_config_default = defineConfig({});
 
-// server/vite.ts
+// client/public/productivity-hub/server/vite.ts
 import { nanoid } from "nanoid";
 var viteLogger = createLogger();
 function log(message, source = "express") {
@@ -2161,7 +2178,7 @@ async function setupVite(app2, server) {
   app2.use("*", async (req, res, next) => {
     const url = req.originalUrl;
     try {
-      const clientTemplate = path2.resolve(
+      const clientTemplate = path.resolve(
         import.meta.dirname,
         "..",
         "client",
@@ -2181,7 +2198,7 @@ async function setupVite(app2, server) {
   });
 }
 function serveStatic(app2) {
-  const distPath = path2.resolve(import.meta.dirname, "public");
+  const distPath = path.resolve(import.meta.dirname, "public");
   if (!fs.existsSync(distPath)) {
     throw new Error(
       `Could not find the build directory: ${distPath}, make sure to build the client first`
@@ -2189,17 +2206,17 @@ function serveStatic(app2) {
   }
   app2.use(express.static(distPath));
   app2.use("*", (_req, res) => {
-    res.sendFile(path2.resolve(distPath, "index.html"));
+    res.sendFile(path.resolve(distPath, "index.html"));
   });
 }
 
-// server/index.ts
+// client/public/productivity-hub/server/index.ts
 var app = express2();
 app.use(express2.json());
 app.use(express2.urlencoded({ extended: false }));
 app.use((req, res, next) => {
   const start = Date.now();
-  const path3 = req.path;
+  const path2 = req.path;
   let capturedJsonResponse = void 0;
   const originalResJson = res.json;
   res.json = function(bodyJson, ...args) {
@@ -2208,8 +2225,8 @@ app.use((req, res, next) => {
   };
   res.on("finish", () => {
     const duration = Date.now() - start;
-    if (path3.startsWith("/api")) {
-      let logLine = `${req.method} ${path3} ${res.statusCode} in ${duration}ms`;
+    if (path2.startsWith("/api")) {
+      let logLine = `${req.method} ${path2} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
