@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { CheckCircle, Flame, Clock, TrendingUp } from "lucide-react";
+import { CheckCircle, Flame, Clock, TrendingUp, Activity, ShieldCheck, AlertTriangle } from "lucide-react";
 import Header from "@/components/header";
 import StreakCalendar from "@/components/streak-calendar";
 import type { Task, Habit, HabitEntry, PomodoroSession } from "@shared/schema";
@@ -30,6 +30,36 @@ export default function Analytics() {
   const completionRate = tasks.length > 0 ? (tasksByStatus.completed || 0) / tasks.length * 100 : 0;
   const focusSessions = pomodoroSessions.filter(s => s.type === 'focus').length;
   const totalFocusMinutes = Math.round(pomodoroSessions.filter(s => s.type === 'focus').reduce((acc, s) => acc + s.duration, 0) / 60);
+  const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+  const todayTasks = tasks.filter((task) => task.dayOfWeek === todayName);
+  const top3Planned = todayTasks.filter((task) => task.status !== "completed").length >= 3;
+  const onePriorityDone = todayTasks.some((task) => task.priority === "high" && task.status === "completed");
+  const northStarMet = top3Planned && onePriorityDone;
+
+  const getHabitStreak = (habitId: number) => {
+    const today = new Date();
+    let streak = 0;
+    for (let i = 0; i < 365; i++) {
+      const checkDate = new Date(today);
+      checkDate.setDate(today.getDate() - i);
+      const dateString = checkDate.toISOString().split("T")[0];
+      const hasEntry = habitEntries.some(
+        (entry) => entry.habitId === habitId && entry.date === dateString && entry.completed,
+      );
+      if (hasEntry) streak++;
+      else if (i === 0) continue;
+      else break;
+    }
+    return streak;
+  };
+
+  const habitsWithStreak = habits.filter((habit) => getHabitStreak(habit.id) >= 2).length;
+  const habitStreakContinuationRate = habits.length > 0 ? (habitsWithStreak / habits.length) * 100 : 0;
+
+  const apiErrorCount = Number(sessionStorage.getItem("sessionApiErrors") || "0");
+  const crashCount = Number(sessionStorage.getItem("sessionCrashCount") || "0");
+  const crashFree = crashCount === 0;
+  const pageLoadMs = Math.round(performance.now());
 
   const statusData = Object.entries(tasksByStatus).map(([status, count]) => ({
     name: status.replace('_', ' '),
@@ -47,6 +77,54 @@ export default function Analytics() {
 
       {/* Content */}
       <main className="max-w-6xl mx-auto px-4 py-6 space-y-6">
+        {/* Success Metrics Snapshot */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card className={northStarMet ? "border-green-300 dark:border-green-700" : "border-yellow-300 dark:border-yellow-700"}>
+            <CardContent className="pt-4">
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg ${northStarMet ? "bg-green-500" : "bg-yellow-500"}`}>
+                  <Activity className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">North Star</p>
+                  <p className="text-xs text-muted-foreground">Top-3 plan + 1 high-priority done</p>
+                  <p className="text-lg font-semibold">{northStarMet ? "Met today" : "Not met yet"}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-indigo-500">
+                  <TrendingUp className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Core Metrics</p>
+                  <p className="text-xs text-muted-foreground">Task completion / streak continuation</p>
+                  <p className="text-lg font-semibold">{completionRate.toFixed(0)}% / {habitStreakContinuationRate.toFixed(0)}%</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-4">
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg ${crashFree && apiErrorCount === 0 ? "bg-green-500" : "bg-red-500"}`}>
+                  {crashFree && apiErrorCount === 0 ? <ShieldCheck className="h-5 w-5 text-white" /> : <AlertTriangle className="h-5 w-5 text-white" />}
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Quality</p>
+                  <p className="text-xs text-muted-foreground">Crash-free / API errors / page load</p>
+                  <p className="text-lg font-semibold">{crashFree ? "Yes" : "No"} • {apiErrorCount} • {pageLoadMs}ms</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
         {/* Quick Stats Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">

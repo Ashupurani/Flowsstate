@@ -1,4 +1,4 @@
-import { Home, Calendar, BarChart3, Users, Menu } from "lucide-react";
+import { Home, Calendar, BarChart3, Users, Menu, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
 import { useState } from "react";
@@ -10,7 +10,8 @@ export default function MobileBottomNav() {
   const [showMenu, setShowMenu] = useState(false);
 
   const navItems = [
-    { href: "/", icon: Home, label: "Dashboard" },
+    { href: "/", icon: Sun, label: "Today" },
+    { href: "/dashboard", icon: Home, label: "Board" },
     { href: "/analytics", icon: BarChart3, label: "Analytics" },
     { href: "/goals", icon: Users, label: "Goals" },
   ];
