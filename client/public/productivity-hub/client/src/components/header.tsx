@@ -86,7 +86,7 @@ export default function Header() {
           <div className="flex items-center space-x-4 md:space-x-6 flex-1 min-w-0">
             <div className="flex items-center space-x-2 md:space-x-3 min-w-0">
               <img 
-                src="/logo.png" 
+                src="/favicon.png" 
                 alt="Productivity Hub Logo" 
                 className="w-10 h-10 flex-shrink-0 object-contain"
               />
