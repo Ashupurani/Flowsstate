@@ -59,7 +59,8 @@ export default function Analytics() {
   const apiErrorCount = Number(sessionStorage.getItem("sessionApiErrors") || "0");
   const crashCount = Number(sessionStorage.getItem("sessionCrashCount") || "0");
   const crashFree = crashCount === 0;
-  const pageLoadMs = Math.round(performance.now());
+  const navEntry = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+  const pageLoadMs = navEntry ? Math.round(navEntry.loadEventEnd - navEntry.startTime) : 0;
 
   const statusData = Object.entries(tasksByStatus).map(([status, count]) => ({
     name: status.replace('_', ' '),

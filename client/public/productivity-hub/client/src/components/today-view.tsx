@@ -100,9 +100,13 @@ export default function TodayView() {
       });
       if (!response.ok) throw new Error("backup failed");
       const result = await response.json();
+      const recordsText =
+        result && typeof result.totalRecords === "number"
+          ? `${result.totalRecords} records protected.`
+          : "Backup snapshot created successfully.";
       toast({
         title: "Backup snapshot created",
-        description: `${result.totalRecords ?? 0} records protected.`,
+        description: recordsText,
       });
     } catch {
       toast({

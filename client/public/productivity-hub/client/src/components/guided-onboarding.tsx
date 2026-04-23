@@ -50,7 +50,7 @@ export default function GuidedOnboarding() {
               status: "proposed",
               dayOfWeek,
               weekKey: getWeekKey(),
-              notes: "Created by onboarding",
+              notes: "Auto-created via quick start",
             }),
           }),
         );
