@@ -116,20 +116,20 @@ export default function Header() {
                       : "text-muted-foreground hover:text-foreground hover:bg-white/50 dark:hover:bg-slate-800/50"
                   }`}
                 >
-                  <Home size={16} />
-                  <span>Dashboard</span>
+                  <Sun size={16} />
+                  <span>Today</span>
                 </button>
               </Link>
-              <Link href="/today">
+              <Link href="/dashboard">
                 <button 
                   className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                    location === "/today" 
+                    location === "/dashboard" 
                       ? "bg-white dark:bg-slate-800 text-foreground shadow-sm" 
                       : "text-muted-foreground hover:text-foreground hover:bg-white/50 dark:hover:bg-slate-800/50"
                   }`}
                 >
-                  <Sun size={16} />
-                  <span>Today</span>
+                  <Home size={16} />
+                  <span>Workspace</span>
                 </button>
               </Link>
               <Link href="/analytics">
@@ -178,7 +178,7 @@ export default function Header() {
           {/* Right Section - Controls */}
           <div className="flex items-center space-x-2 flex-shrink-0">
             {/* Sidebar Controls - Only show on Dashboard */}
-            {location === "/" && (
+            {location === "/dashboard" && (
               <div className="hidden lg:flex items-center gap-1">
                 <Button
                   variant="outline"

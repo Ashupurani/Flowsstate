@@ -44,14 +44,17 @@ export default function SmartNotifications() {
       localStorage.setItem('dismissedNotifications', JSON.stringify({ ids: [], date: today }));
     }
 
-    // 1. HIGH PRIORITY TASKS - Only one consolidated notification
+    // 1. DAY-END HIGH PRIORITY NUDGE
     const urgentTasks = tasks.filter(t => t.priority === 'high' && t.status !== 'completed');
-    if (urgentTasks.length >= 2) {
+    if (hour >= 17 && urgentTasks.length >= 1) {
+      const topUrgentTask = urgentTasks[0];
       newNotifications.push({
         id: 'high-priority-tasks',
         type: 'deadline',
-        title: 'High Priority Tasks',
-        message: `${urgentTasks.length} urgent tasks need your attention today.`,
+        title: 'Day-End Priority Nudge',
+        message: urgentTasks.length === 1
+          ? `Before day-end, finish: "${topUrgentTask.title}".`
+          : `${urgentTasks.length} high-priority tasks are still open. Finish one before day-end.`,
         priority: 'high',
         actionable: true,
         timestamp: now,
