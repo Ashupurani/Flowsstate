@@ -9,20 +9,8 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/site-icon.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/site-icon.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/site-icon.png",
-      "sizes": "1024x1024",
+      "src": "/favicon.png",
+      "sizes": "256x256",
       "type": "image/png",
       "purpose": "maskable"
     }
