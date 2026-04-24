@@ -55,6 +55,29 @@ export const pomodoroSessions = pgTable("pomodoro_sessions", {
   completedAt: timestamp("completed_at").defaultNow().notNull(),
 });
 
+export const focusBlocks = pgTable("focus_blocks", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  plannedDurationMin: integer("planned_duration_min").notNull(),
+  status: text("status").notNull().default("active"), // "active", "paused", "completed", "canceled"
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  pausedAt: timestamp("paused_at"),
+  totalPausedMs: integer("total_paused_ms").notNull().default(0),
+  completedAt: timestamp("completed_at"),
+  actualDurationSec: integer("actual_duration_sec"),
+  qualityRating: integer("quality_rating"), // 1..5 optional
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const focusInterruptions = pgTable("focus_interruptions", {
+  id: serial("id").primaryKey(),
+  focusBlockId: integer("focus_block_id").notNull().references(() => focusBlocks.id, { onDelete: "cascade" }),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  interruptionType: text("interruption_type").notNull().default("internal"),
+  note: text("note"),
+  occurredAt: timestamp("occurred_at").defaultNow().notNull(),
+});
+
 // Team collaboration tables
 export const teams = pgTable("teams", {
   id: serial("id").primaryKey(),
@@ -105,6 +128,16 @@ export const insertPomodoroSessionSchema = createInsertSchema(pomodoroSessions).
   completedAt: true,
 });
 
+export const insertFocusBlockSchema = createInsertSchema(focusBlocks).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertFocusInterruptionSchema = createInsertSchema(focusInterruptions).omit({
+  id: true,
+  occurredAt: true,
+});
+
 export type Task = typeof tasks.$inferSelect;
 export type InsertTask = z.infer<typeof insertTaskSchema>;
 
@@ -116,6 +149,12 @@ export type InsertHabitEntry = z.infer<typeof insertHabitEntrySchema>;
 
 export type PomodoroSession = typeof pomodoroSessions.$inferSelect;
 export type InsertPomodoroSession = z.infer<typeof insertPomodoroSessionSchema>;
+
+export type FocusBlock = typeof focusBlocks.$inferSelect;
+export type InsertFocusBlock = z.infer<typeof insertFocusBlockSchema>;
+
+export type FocusInterruption = typeof focusInterruptions.$inferSelect;
+export type InsertFocusInterruption = z.infer<typeof insertFocusInterruptionSchema>;
 
 // Team collaboration types and schemas
 export const insertTeamSchema = createInsertSchema(teams).omit({

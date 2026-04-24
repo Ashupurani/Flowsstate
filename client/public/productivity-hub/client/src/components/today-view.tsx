@@ -10,6 +10,7 @@ import { useCalendarStore } from '@/lib/store';
 import { useFlowScore } from '@/hooks/use-flow-score';
 import { useToast } from "@/hooks/use-toast";
 import PomodoroTimer from "@/components/pomodoro-timer";
+import FocusBlockPanel from "@/components/focus-block-panel";
 import { CheckCircle2, Target, Flame, Clock, TrendingUp, Shield, Download, Archive } from 'lucide-react';
 import type { Task, Habit, HabitEntry } from '@shared/schema';
 
@@ -353,6 +354,8 @@ export default function TodayView() {
           </CardContent>
         </Card>
       </div>
+
+      <FocusBlockPanel />
 
       <Card>
         <CardHeader>

@@ -1,10 +1,12 @@
 import { 
   tasks, habits, habitEntries, pomodoroSessions, users, teams, teamMembers, teamInvitations,
-  goals,
+  goals, focusBlocks, focusInterruptions,
   type Task, type InsertTask,
   type Habit, type InsertHabit,
   type HabitEntry, type InsertHabitEntry,
   type PomodoroSession, type InsertPomodoroSession,
+  type FocusBlock, type InsertFocusBlock,
+  type FocusInterruption, type InsertFocusInterruption,
   type User, type InsertUser,
   type Team, type InsertTeam,
   type TeamMember, type InsertTeamMember,
@@ -12,7 +14,11 @@ import {
   type Goal, type InsertGoal
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, ne, lt } from "drizzle-orm";
+import { eq, and, ne, lt, gte, lte, or, desc } from "drizzle-orm";
+
+export type FocusBlockWithInterruptions = FocusBlock & {
+  interruptions: FocusInterruption[];
+};
 
 export interface IStorage {
   // Tasks - User-specific
@@ -40,6 +46,15 @@ export interface IStorage {
   // Pomodoro Sessions - User-specific
   getPomodoroSessions(userId: number): Promise<PomodoroSession[]>;
   createPomodoroSession(session: InsertPomodoroSession): Promise<PomodoroSession>;
+
+  // Focus Blocks - User-specific
+  getActiveFocusBlock(userId: number): Promise<FocusBlockWithInterruptions | undefined>;
+  startFocusBlock(userId: number, plannedDurationMin: number): Promise<FocusBlockWithInterruptions>;
+  pauseFocusBlock(userId: number, blockId: number): Promise<FocusBlockWithInterruptions>;
+  resumeFocusBlock(userId: number, blockId: number): Promise<FocusBlockWithInterruptions>;
+  addFocusInterruption(userId: number, blockId: number, interruptionType: string, note?: string): Promise<FocusInterruption>;
+  completeFocusBlock(userId: number, blockId: number, qualityRating?: number): Promise<FocusBlockWithInterruptions>;
+  getFocusBlocks(userId: number, from?: Date, to?: Date): Promise<FocusBlock[]>;
 
   // Reset all user data
   resetAllUserData(userId: number): Promise<boolean>;
@@ -77,9 +92,42 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  private focusFallbackBlocks = new Map<number, FocusBlock[]>();
+  private focusFallbackInterruptions = new Map<number, FocusInterruption[]>();
+  private focusFallbackNextBlockId = 1;
+  private focusFallbackNextInterruptionId = 1;
+
   constructor() {
     // Initialize with default habits when database is empty
     this.initializeDefaultData();
+  }
+
+  private isMissingFocusTableError(error: unknown): boolean {
+    const message = String((error as any)?.message || "").toLowerCase();
+    return message.includes("focus_blocks") || message.includes("focus_interruptions");
+  }
+
+  private getFallbackUserBlocks(userId: number): FocusBlock[] {
+    return this.focusFallbackBlocks.get(userId) || [];
+  }
+
+  private setFallbackUserBlocks(userId: number, blocks: FocusBlock[]): void {
+    this.focusFallbackBlocks.set(userId, blocks);
+  }
+
+  private getFallbackInterruptions(blockId: number): FocusInterruption[] {
+    return this.focusFallbackInterruptions.get(blockId) || [];
+  }
+
+  private setFallbackInterruptions(blockId: number, interruptions: FocusInterruption[]): void {
+    this.focusFallbackInterruptions.set(blockId, interruptions);
+  }
+
+  private toFocusBlockWithInterruptions(block: FocusBlock, interruptions: FocusInterruption[]): FocusBlockWithInterruptions {
+    return {
+      ...block,
+      interruptions,
+    };
   }
 
   private async initializeDefaultData() {
@@ -270,8 +318,316 @@ export class DatabaseStorage implements IStorage {
     return session;
   }
 
+  async getActiveFocusBlock(userId: number): Promise<FocusBlockWithInterruptions | undefined> {
+    try {
+      const [block] = await db.select().from(focusBlocks)
+        .where(
+          and(
+            eq(focusBlocks.userId, userId),
+            or(eq(focusBlocks.status, "active"), eq(focusBlocks.status, "paused")),
+          ),
+        )
+        .orderBy(desc(focusBlocks.startedAt))
+        .limit(1);
+
+      if (!block) return undefined;
+
+      const interruptions = await db.select().from(focusInterruptions)
+        .where(eq(focusInterruptions.focusBlockId, block.id))
+        .orderBy(desc(focusInterruptions.occurredAt));
+
+      return this.toFocusBlockWithInterruptions(block, interruptions.reverse());
+    } catch (error) {
+      if (!this.isMissingFocusTableError(error)) throw error;
+
+      const blocks = this.getFallbackUserBlocks(userId)
+        .filter((block) => block.status === "active" || block.status === "paused")
+        .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+
+      const block = blocks[0];
+      if (!block) return undefined;
+      return this.toFocusBlockWithInterruptions(block, this.getFallbackInterruptions(block.id));
+    }
+  }
+
+  async startFocusBlock(userId: number, plannedDurationMin: number): Promise<FocusBlockWithInterruptions> {
+    const activeBlock = await this.getActiveFocusBlock(userId);
+    if (activeBlock) {
+      throw new Error("A focus block is already active");
+    }
+
+    try {
+      const [block] = await db.insert(focusBlocks).values({
+        userId,
+        plannedDurationMin,
+        status: "active",
+      }).returning();
+
+      return this.toFocusBlockWithInterruptions(block, []);
+    } catch (error) {
+      if (!this.isMissingFocusTableError(error)) throw error;
+
+      const now = new Date();
+      const fallbackBlock: FocusBlock = {
+        id: this.focusFallbackNextBlockId++,
+        userId,
+        plannedDurationMin,
+        status: "active",
+        startedAt: now,
+        pausedAt: null,
+        totalPausedMs: 0,
+        completedAt: null,
+        actualDurationSec: null,
+        qualityRating: null,
+        createdAt: now,
+      };
+      const existing = this.getFallbackUserBlocks(userId);
+      this.setFallbackUserBlocks(userId, [...existing, fallbackBlock]);
+      return this.toFocusBlockWithInterruptions(fallbackBlock, []);
+    }
+  }
+
+  async pauseFocusBlock(userId: number, blockId: number): Promise<FocusBlockWithInterruptions> {
+    try {
+      const [updated] = await db.update(focusBlocks)
+        .set({ status: "paused", pausedAt: new Date() })
+        .where(and(eq(focusBlocks.id, blockId), eq(focusBlocks.userId, userId), eq(focusBlocks.status, "active")))
+        .returning();
+
+      const block = updated || (await db.select().from(focusBlocks)
+        .where(and(eq(focusBlocks.id, blockId), eq(focusBlocks.userId, userId)))
+        .limit(1))[0];
+
+      if (!block) throw new Error("Focus block not found");
+
+      const interruptions = await db.select().from(focusInterruptions)
+        .where(eq(focusInterruptions.focusBlockId, block.id))
+        .orderBy(desc(focusInterruptions.occurredAt));
+
+      return this.toFocusBlockWithInterruptions(block, interruptions.reverse());
+    } catch (error) {
+      if (!this.isMissingFocusTableError(error)) throw error;
+
+      const blocks = this.getFallbackUserBlocks(userId);
+      const index = blocks.findIndex((block) => block.id === blockId);
+      if (index === -1) throw new Error("Focus block not found");
+
+      const block = blocks[index];
+      if (block.status === "active") {
+        blocks[index] = { ...block, status: "paused", pausedAt: new Date() };
+        this.setFallbackUserBlocks(userId, blocks);
+      }
+      return this.toFocusBlockWithInterruptions(blocks[index], this.getFallbackInterruptions(blockId));
+    }
+  }
+
+  async resumeFocusBlock(userId: number, blockId: number): Promise<FocusBlockWithInterruptions> {
+    try {
+      const [block] = await db.select().from(focusBlocks)
+        .where(and(eq(focusBlocks.id, blockId), eq(focusBlocks.userId, userId)))
+        .limit(1);
+
+      if (!block) throw new Error("Focus block not found");
+
+      let totalPausedMs = block.totalPausedMs || 0;
+      if (block.status === "paused" && block.pausedAt) {
+        totalPausedMs += Math.max(0, Date.now() - new Date(block.pausedAt).getTime());
+      }
+
+      const [updated] = await db.update(focusBlocks)
+        .set({ status: "active", pausedAt: null, totalPausedMs })
+        .where(and(eq(focusBlocks.id, blockId), eq(focusBlocks.userId, userId)))
+        .returning();
+
+      const interruptions = await db.select().from(focusInterruptions)
+        .where(eq(focusInterruptions.focusBlockId, updated.id))
+        .orderBy(desc(focusInterruptions.occurredAt));
+
+      return this.toFocusBlockWithInterruptions(updated, interruptions.reverse());
+    } catch (error) {
+      if (!this.isMissingFocusTableError(error)) throw error;
+
+      const blocks = this.getFallbackUserBlocks(userId);
+      const index = blocks.findIndex((block) => block.id === blockId);
+      if (index === -1) throw new Error("Focus block not found");
+
+      const block = blocks[index];
+      let totalPausedMs = block.totalPausedMs || 0;
+      if (block.status === "paused" && block.pausedAt) {
+        totalPausedMs += Math.max(0, Date.now() - new Date(block.pausedAt).getTime());
+      }
+
+      const updated = { ...block, status: "active", pausedAt: null, totalPausedMs } as FocusBlock;
+      blocks[index] = updated;
+      this.setFallbackUserBlocks(userId, blocks);
+      return this.toFocusBlockWithInterruptions(updated, this.getFallbackInterruptions(blockId));
+    }
+  }
+
+  async addFocusInterruption(userId: number, blockId: number, interruptionType: string, note?: string): Promise<FocusInterruption> {
+    try {
+      const [block] = await db.select().from(focusBlocks)
+        .where(and(eq(focusBlocks.id, blockId), eq(focusBlocks.userId, userId)))
+        .limit(1);
+
+      if (!block) throw new Error("Focus block not found");
+
+      const [interruption] = await db.insert(focusInterruptions).values({
+        focusBlockId: blockId,
+        userId,
+        interruptionType,
+        note,
+      }).returning();
+
+      return interruption;
+    } catch (error) {
+      if (!this.isMissingFocusTableError(error)) throw error;
+
+      const blocks = this.getFallbackUserBlocks(userId);
+      const blockExists = blocks.some((block) => block.id === blockId);
+      if (!blockExists) throw new Error("Focus block not found");
+
+      const interruption: FocusInterruption = {
+        id: this.focusFallbackNextInterruptionId++,
+        focusBlockId: blockId,
+        userId,
+        interruptionType,
+        note: note || null,
+        occurredAt: new Date(),
+      };
+      const existing = this.getFallbackInterruptions(blockId);
+      this.setFallbackInterruptions(blockId, [...existing, interruption]);
+      return interruption;
+    }
+  }
+
+  async completeFocusBlock(userId: number, blockId: number, qualityRating?: number): Promise<FocusBlockWithInterruptions> {
+    const now = new Date();
+
+    try {
+      const [block] = await db.select().from(focusBlocks)
+        .where(and(eq(focusBlocks.id, blockId), eq(focusBlocks.userId, userId)))
+        .limit(1);
+
+      if (!block) throw new Error("Focus block not found");
+
+      let totalPausedMs = block.totalPausedMs || 0;
+      if (block.status === "paused" && block.pausedAt) {
+        totalPausedMs += Math.max(0, now.getTime() - new Date(block.pausedAt).getTime());
+      }
+
+      const elapsedMs = Math.max(0, now.getTime() - new Date(block.startedAt).getTime() - totalPausedMs);
+      const actualDurationSec = Math.max(60, Math.round(elapsedMs / 1000));
+
+      const [updated] = await db.update(focusBlocks)
+        .set({
+          status: "completed",
+          pausedAt: null,
+          totalPausedMs,
+          completedAt: now,
+          actualDurationSec,
+          qualityRating: qualityRating ?? block.qualityRating,
+        })
+        .where(and(eq(focusBlocks.id, blockId), eq(focusBlocks.userId, userId)))
+        .returning();
+
+      await this.createPomodoroSession({
+        userId,
+        duration: actualDurationSec,
+        type: "focus_block",
+      });
+
+      const interruptions = await db.select().from(focusInterruptions)
+        .where(eq(focusInterruptions.focusBlockId, updated.id))
+        .orderBy(desc(focusInterruptions.occurredAt));
+
+      return this.toFocusBlockWithInterruptions(updated, interruptions.reverse());
+    } catch (error) {
+      if (!this.isMissingFocusTableError(error)) throw error;
+
+      const blocks = this.getFallbackUserBlocks(userId);
+      const index = blocks.findIndex((block) => block.id === blockId);
+      if (index === -1) throw new Error("Focus block not found");
+
+      const block = blocks[index];
+      let totalPausedMs = block.totalPausedMs || 0;
+      if (block.status === "paused" && block.pausedAt) {
+        totalPausedMs += Math.max(0, now.getTime() - new Date(block.pausedAt).getTime());
+      }
+
+      const elapsedMs = Math.max(0, now.getTime() - new Date(block.startedAt).getTime() - totalPausedMs);
+      const actualDurationSec = Math.max(60, Math.round(elapsedMs / 1000));
+
+      const updated = {
+        ...block,
+        status: "completed",
+        pausedAt: null,
+        totalPausedMs,
+        completedAt: now,
+        actualDurationSec,
+        qualityRating: qualityRating ?? block.qualityRating,
+      } as FocusBlock;
+
+      blocks[index] = updated;
+      this.setFallbackUserBlocks(userId, blocks);
+
+      await this.createPomodoroSession({
+        userId,
+        duration: actualDurationSec,
+        type: "focus_block",
+      });
+
+      return this.toFocusBlockWithInterruptions(updated, this.getFallbackInterruptions(blockId));
+    }
+  }
+
+  async getFocusBlocks(userId: number, from?: Date, to?: Date): Promise<FocusBlock[]> {
+    try {
+      const baseConditions = [eq(focusBlocks.userId, userId), eq(focusBlocks.status, "completed")];
+
+      if (from) {
+        baseConditions.push(gte(focusBlocks.completedAt, from));
+      }
+      if (to) {
+        baseConditions.push(lte(focusBlocks.completedAt, to));
+      }
+
+      return await db.select().from(focusBlocks)
+        .where(and(...baseConditions))
+        .orderBy(desc(focusBlocks.completedAt));
+    } catch (error) {
+      if (!this.isMissingFocusTableError(error)) throw error;
+
+      return this.getFallbackUserBlocks(userId)
+        .filter((block) => block.status === "completed")
+        .filter((block) => {
+          if (!block.completedAt) return false;
+          if (from && new Date(block.completedAt) < from) return false;
+          if (to && new Date(block.completedAt) > to) return false;
+          return true;
+        })
+        .sort((a, b) => {
+          const aTime = a.completedAt ? new Date(a.completedAt).getTime() : 0;
+          const bTime = b.completedAt ? new Date(b.completedAt).getTime() : 0;
+          return bTime - aTime;
+        });
+    }
+  }
+
   async resetAllUserData(userId: number): Promise<boolean> {
     try {
+      try {
+        // Delete all user's focus interruptions first
+        await db.delete(focusInterruptions).where(eq(focusInterruptions.userId, userId));
+
+        // Delete all user's focus blocks
+        await db.delete(focusBlocks).where(eq(focusBlocks.userId, userId));
+      } catch (error) {
+        if (!this.isMissingFocusTableError(error)) {
+          throw error;
+        }
+      }
+
       // Delete all user's pomodoro sessions
       await db.delete(pomodoroSessions).where(eq(pomodoroSessions.userId, userId));
       
@@ -283,6 +639,14 @@ export class DatabaseStorage implements IStorage {
       
       // Delete all user's tasks
       await db.delete(tasks).where(eq(tasks.userId, userId));
+
+      // Clear fallback focus state for this user
+      this.focusFallbackBlocks.delete(userId);
+      for (const [blockId, interruptions] of this.focusFallbackInterruptions.entries()) {
+        if (interruptions.some((item) => item.userId === userId)) {
+          this.focusFallbackInterruptions.delete(blockId);
+        }
+      }
       
       return true;
     } catch (error) {

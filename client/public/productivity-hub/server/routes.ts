@@ -14,6 +14,42 @@ import archiver from "archiver";
 import { sendEmail, getDisplayFromAddress } from "./email";
 import * as XLSX from 'xlsx';
 
+function toMs(value: Date | string | null): number | null {
+  if (!value) return null;
+  return new Date(value).getTime();
+}
+
+function serializeActiveFocusBlock(block: {
+  id: number;
+  userId: number;
+  plannedDurationMin: number;
+  startedAt: Date | string;
+  status: string;
+  pausedAt: Date | string | null;
+  totalPausedMs: number;
+  interruptions: Array<{ id: number; interruptionType: string; note: string | null; occurredAt: Date | string }>;
+}) {
+  const nowMs = Date.now();
+  const startedAtMs = toMs(block.startedAt) || nowMs;
+  const pausedAtMs = toMs(block.pausedAt);
+  const currentPausedMs = block.status === "paused" && pausedAtMs ? Math.max(0, nowMs - pausedAtMs) : 0;
+  const elapsedMs = Math.max(0, nowMs - startedAtMs - (block.totalPausedMs || 0) - currentPausedMs);
+  const plannedSeconds = block.plannedDurationMin * 60;
+  const elapsedSeconds = Math.floor(elapsedMs / 1000);
+
+  return {
+    ...block,
+    startedAt: new Date(block.startedAt).toISOString(),
+    pausedAt: block.pausedAt ? new Date(block.pausedAt).toISOString() : null,
+    interruptions: block.interruptions.map((item) => ({
+      ...item,
+      occurredAt: new Date(item.occurredAt).toISOString(),
+    })),
+    elapsedSeconds,
+    remainingSeconds: Math.max(0, plannedSeconds - elapsedSeconds),
+  };
+}
+
 // Helper function to convert JSON data to CSV
 function convertToCSV(data: any[]): string {
   if (!data || data.length === 0) return '';
@@ -728,27 +764,353 @@ For support, contact: support@productivityhub.com
   });
 
   // Notifications API
-  app.get("/api/notifications", async (req, res) => {
+  app.get("/api/notifications", authenticateToken, async (req: AuthenticatedRequest, res) => {
     try {
+      const userId = req.user!.id;
+      const [tasks, habits, habitEntries] = await Promise.all([
+        storage.getTasks(userId),
+        storage.getHabits(userId),
+        storage.getHabitEntries(userId),
+      ]);
+
+      const today = new Date();
+      const todayDate = today.toISOString().split("T")[0];
+      const todayName = today.toLocaleDateString("en-US", { weekday: "long" }).toLowerCase();
+
+      const todayTasks = tasks.filter((task) => task.dayOfWeek === todayName);
+      const overdueHighPriority = todayTasks.filter(
+        (task) => task.priority === "high" && task.status !== "completed",
+      );
+
+      const todayHabitEntries = habitEntries.filter((entry) => entry.date === todayDate);
+      const completedHabitIds = new Set(
+        todayHabitEntries.filter((entry) => entry.completed).map((entry) => entry.habitId),
+      );
+      const incompleteHabits = habits.filter((habit) => !completedHabitIds.has(habit.id));
+
       const notifications: any[] = [];
+
+      if (overdueHighPriority.length > 0) {
+        notifications.push({
+          id: `high-priority-${todayDate}`,
+          type: "deadline_alert",
+          title: "High-priority tasks pending",
+          message: `${overdueHighPriority.length} high-priority task(s) still open for today.`,
+          priority: "high",
+          read: false,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      if (incompleteHabits.length > 0) {
+        notifications.push({
+          id: `habits-${todayDate}`,
+          type: "habit_reminder",
+          title: "Habit check-in",
+          message: `${incompleteHabits.length} habit(s) are still incomplete today.`,
+          priority: "medium",
+          read: false,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      if (todayTasks.length > 0 && todayTasks.every((task) => task.status === "completed")) {
+        notifications.push({
+          id: `tasks-done-${todayDate}`,
+          type: "achievement",
+          title: "Daily tasks complete",
+          message: "Great work. You completed all tasks scheduled for today.",
+          priority: "low",
+          read: false,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
       res.json(notifications);
     } catch (error) {
+      console.error("Error fetching notifications:", error);
       res.status(500).json({ message: "Failed to fetch notifications" });
     }
   });
 
   // Analytics API
-  app.get("/api/analytics/productivity", async (req, res) => {
+  app.get("/api/analytics/productivity", authenticateToken, async (req: AuthenticatedRequest, res) => {
     try {
+      const userId = req.user!.id;
+      const [tasks, habits, habitEntries, pomodoroSessions] = await Promise.all([
+        storage.getTasks(userId),
+        storage.getHabits(userId),
+        storage.getHabitEntries(userId),
+        storage.getPomodoroSessions(userId),
+      ]);
+
+      const tasksCompleted = tasks.filter((task) => task.status === "completed").length;
+      const completionRate = tasks.length > 0 ? Math.round((tasksCompleted / tasks.length) * 100) : 0;
+
+      const highPriorityTasks = tasks.filter((task) => task.priority === "high");
+      const highPriorityCompleted = highPriorityTasks.filter((task) => task.status === "completed").length;
+      const highPriorityCompletionRate = highPriorityTasks.length > 0
+        ? Math.round((highPriorityCompleted / highPriorityTasks.length) * 100)
+        : 0;
+
+      const habitsCompleted = habitEntries.filter((entry) => entry.completed).length;
+      const habitCompletionRate = habitEntries.length > 0
+        ? Math.round((habitsCompleted / habitEntries.length) * 100)
+        : 0;
+
+      const focusSessions = pomodoroSessions.filter(
+        (session) => session.type === "focus" || session.type === "focus_block",
+      );
+      const focusMinutesTotal = Math.round(
+        focusSessions.reduce((sum, session) => sum + (session.duration || 0), 0) / 60,
+      );
+
+      const now = new Date();
+      const sevenDaysAgo = new Date(now);
+      sevenDaysAgo.setDate(now.getDate() - 7);
+
+      const focusMinutesLast7Days = Math.round(
+        focusSessions.reduce((sum, session) => {
+          const completedAt = new Date(session.completedAt);
+          if (completedAt >= sevenDaysAgo) {
+            return sum + (session.duration || 0);
+          }
+          return sum;
+        }, 0) / 60,
+      );
+
+      const todayName = now.toLocaleDateString("en-US", { weekday: "long" }).toLowerCase();
+      const todayTasks = tasks.filter((task) => task.dayOfWeek === todayName);
+      const top3Planned = todayTasks.filter((task) => task.status !== "completed").length >= 3;
+      const onePriorityDone = todayTasks.some((task) => task.priority === "high" && task.status === "completed");
+      const northStarMetToday = top3Planned && onePriorityDone;
+
+      const taskSpecificityScoreAvg = tasks.length > 0
+        ? Math.round(
+            tasks.reduce((sum, task) => {
+              const title = (task.title || "").trim();
+              const hasActionVerb = /^(write|review|call|plan|build|fix|update|send|prepare|draft|design|refactor|test)\b/i.test(title);
+              const hasEnoughWords = title.split(/\s+/).filter(Boolean).length >= 3;
+              const score = (hasActionVerb ? 50 : 0) + (hasEnoughWords ? 50 : 0);
+              return sum + score;
+            }, 0) / tasks.length,
+          )
+        : 0;
+
       const analytics = {
-        tasksCompleted: 15,
-        habitsCompleted: 42,
-        pomodoroSessions: 28,
-        productivityScore: 85
+        tasksTotal: tasks.length,
+        tasksCompleted,
+        completionRate,
+        highPriorityCompletionRate,
+        habitsTotal: habits.length,
+        habitEntriesTotal: habitEntries.length,
+        habitsCompleted,
+        habitCompletionRate,
+        focusSessionsTotal: focusSessions.length,
+        focusMinutesTotal,
+        focusMinutesLast7Days,
+        northStarMetToday,
+        taskSpecificityScoreAvg,
+        generatedAt: now.toISOString(),
       };
+
       res.json(analytics);
     } catch (error) {
+      console.error("Error fetching productivity analytics:", error);
       res.status(500).json({ message: "Failed to fetch analytics" });
+    }
+  });
+
+  // Feature flags API
+  app.get("/api/features", authenticateToken, async (_req: AuthenticatedRequest, res) => {
+    const parseFlag = (value: string | undefined, defaultValue: boolean) => {
+      if (value === undefined) return defaultValue;
+      return value.toLowerCase() === "true";
+    };
+
+    res.json({
+      focusEngine: parseFlag(process.env.FEATURE_FOCUS_ENGINE, true),
+      weeklyReview: parseFlag(process.env.FEATURE_WEEKLY_REVIEW, true),
+      aiCoach: parseFlag(process.env.FEATURE_AI_COACH, true),
+    });
+  });
+
+  // Telemetry events API
+  app.post("/api/telemetry/events", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const { name, payload } = req.body || {};
+
+      if (!name || typeof name !== "string") {
+        return res.status(400).json({ message: "Event name is required" });
+      }
+
+      // Scaffolding-only for now: log event safely so product can validate instrumentation.
+      console.log("[telemetry]", {
+        userId,
+        name,
+        payload: payload ?? {},
+        createdAt: new Date().toISOString(),
+      });
+
+      res.status(201).json({ success: true });
+    } catch (error) {
+      console.error("Error recording telemetry event:", error);
+      res.status(500).json({ message: "Failed to record telemetry event" });
+    }
+  });
+
+  // Focus blocks API
+  app.get("/api/focus-blocks/active", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const activeBlock = await storage.getActiveFocusBlock(userId);
+      res.json(activeBlock ? serializeActiveFocusBlock(activeBlock) : null);
+    } catch (error) {
+      console.error("Error fetching active focus block:", error);
+      res.status(500).json({ message: "Failed to fetch active focus block" });
+    }
+  });
+
+  app.post("/api/focus-blocks/start", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const activeBlock = await storage.getActiveFocusBlock(userId);
+      if (activeBlock) {
+        return res.status(409).json({ message: "A focus block is already active" });
+      }
+
+      const plannedDurationMin = Number(req.body?.plannedDurationMin);
+      if (!Number.isFinite(plannedDurationMin) || plannedDurationMin <= 0 || plannedDurationMin > 240) {
+        return res.status(400).json({ message: "plannedDurationMin must be between 1 and 240" });
+      }
+
+      const block = await storage.startFocusBlock(userId, plannedDurationMin);
+      res.status(201).json(serializeActiveFocusBlock(block));
+    } catch (error) {
+      console.error("Error starting focus block:", error);
+      res.status(500).json({ message: "Failed to start focus block" });
+    }
+  });
+
+  app.put("/api/focus-blocks/:id/pause", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const blockId = Number(req.params.id);
+      const block = await storage.pauseFocusBlock(userId, blockId);
+
+      res.json(serializeActiveFocusBlock(block));
+    } catch (error) {
+      console.error("Error pausing focus block:", error);
+      if (String((error as any)?.message || "").includes("not found")) {
+        return res.status(404).json({ message: "Active focus block not found" });
+      }
+      res.status(500).json({ message: "Failed to pause focus block" });
+    }
+  });
+
+  app.put("/api/focus-blocks/:id/resume", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const blockId = Number(req.params.id);
+      const block = await storage.resumeFocusBlock(userId, blockId);
+
+      res.json(serializeActiveFocusBlock(block));
+    } catch (error) {
+      console.error("Error resuming focus block:", error);
+      if (String((error as any)?.message || "").includes("not found")) {
+        return res.status(404).json({ message: "Active focus block not found" });
+      }
+      res.status(500).json({ message: "Failed to resume focus block" });
+    }
+  });
+
+  app.put("/api/focus-blocks/:id/complete", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const blockId = Number(req.params.id);
+      const qualityRatingRaw = req.body?.qualityRating;
+      const qualityRating = Number.isFinite(Number(qualityRatingRaw))
+        ? Number(qualityRatingRaw)
+        : undefined;
+      const block = await storage.completeFocusBlock(userId, blockId, qualityRating);
+
+      res.json({
+        message: "Focus block completed",
+        completedSession: {
+          duration: block.actualDurationSec,
+          completedAt: block.completedAt,
+          type: "focus_block",
+        },
+        interruptions: block.interruptions,
+      });
+    } catch (error) {
+      console.error("Error completing focus block:", error);
+      if (String((error as any)?.message || "").includes("not found")) {
+        return res.status(404).json({ message: "Active focus block not found" });
+      }
+      res.status(500).json({ message: "Failed to complete focus block" });
+    }
+  });
+
+  app.post("/api/focus-blocks/:id/interruptions", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const blockId = Number(req.params.id);
+      const interruptionType = String(req.body?.interruptionType || "internal");
+      const note = req.body?.note ? String(req.body.note).slice(0, 200) : undefined;
+
+      const interruption = await storage.addFocusInterruption(userId, blockId, interruptionType, note);
+      res.status(201).json(interruption);
+    } catch (error) {
+      console.error("Error recording focus interruption:", error);
+      if (String((error as any)?.message || "").includes("not found")) {
+        return res.status(404).json({ message: "Active focus block not found" });
+      }
+      res.status(500).json({ message: "Failed to record interruption" });
+    }
+  });
+
+  app.get("/api/focus-blocks", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const from = typeof req.query.from === "string" ? new Date(req.query.from) : undefined;
+      const to = typeof req.query.to === "string" ? new Date(req.query.to) : undefined;
+
+      const focusBlocks = await storage.getFocusBlocks(userId, from, to);
+
+      // Backward compatibility: include historical focus_block sessions if focus table has no records.
+      if (focusBlocks.length === 0) {
+        const sessions = await storage.getPomodoroSessions(userId);
+        const legacyBlocks = sessions
+          .filter((session) => session.type === "focus_block")
+          .filter((session) => {
+            const completedAt = new Date(session.completedAt);
+            if (from && completedAt < from) return false;
+            if (to && completedAt > to) return false;
+            return true;
+          })
+          .map((session) => ({
+            id: session.id,
+            durationSeconds: session.duration,
+            completedAt: session.completedAt,
+            plannedDurationMin: null,
+          }));
+        return res.json(legacyBlocks);
+      }
+
+      res.json(
+        focusBlocks.map((block) => ({
+          id: block.id,
+          durationSeconds: block.actualDurationSec || Math.max(60, Math.round(block.plannedDurationMin * 60)),
+          completedAt: block.completedAt,
+          plannedDurationMin: block.plannedDurationMin,
+          qualityRating: block.qualityRating,
+        })),
+      );
+    } catch (error) {
+      console.error("Error fetching focus blocks:", error);
+      res.status(500).json({ message: "Failed to fetch focus blocks" });
     }
   });
 
