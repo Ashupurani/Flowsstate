@@ -90,7 +90,7 @@ export default function Welcome() {
         <div className="relative container mx-auto px-6 pt-16 pb-24">
           <div className={`text-center transition-all duration-1000 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
             <img 
-              src="/logo.png" 
+              src="/favicon.png" 
               alt="Productivity Hub Logo" 
               className="w-20 h-20 mx-auto mb-4 object-contain"
             />
