@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,13 +8,16 @@ import { Progress } from '@/components/ui/progress';
 import { apiRequest } from '@/lib/queryClient';
 import { useCalendarStore } from '@/lib/store';
 import { useFlowScore } from '@/hooks/use-flow-score';
-import { CheckCircle2, Circle, Target, Flame, Clock, TrendingUp } from 'lucide-react';
+import { useToast } from "@/hooks/use-toast";
+import PomodoroTimer from "@/components/pomodoro-timer";
+import { CheckCircle2, Target, Flame, Clock, TrendingUp, Shield, Download, Archive } from 'lucide-react';
 import type { Task, Habit, HabitEntry } from '@shared/schema';
 
 export default function TodayView() {
   const queryClient = useQueryClient();
   const selectedDate = useCalendarStore(state => state.selectedDate);
   const flowScore = useFlowScore();
+  const { toast } = useToast();
   
   const { data: tasks = [] } = useQuery<Task[]>({ queryKey: ['/api/tasks'] });
   const { data: habits = [] } = useQuery<Habit[]>({ queryKey: ['/api/habits'] });
@@ -33,6 +36,14 @@ export default function TodayView() {
     return tasks.filter(t => t.dayOfWeek === today.dayOfWeek);
   }, [tasks, today.dayOfWeek]);
 
+  const topThreePriorities = useMemo(() => {
+    const rank: Record<string, number> = { high: 0, medium: 1, low: 2 };
+    return todayTasks
+      .filter((task) => task.status !== "completed")
+      .sort((a, b) => rank[a.priority] - rank[b.priority])
+      .slice(0, 3);
+  }, [todayTasks]);
+
   const todayHabits = useMemo(() => {
     return habits.map(habit => {
       const entry = habitEntries.find(e => 
@@ -44,6 +55,9 @@ export default function TodayView() {
 
   const completedTasksCount = todayTasks.filter(t => t.status === 'completed').length;
   const completedHabitsCount = todayHabits.filter(h => h.completed).length;
+  const completedPriorityTask = todayTasks.some((task) => task.priority === "high" && task.status === "completed");
+  const dailyPlanReady = topThreePriorities.length >= 3;
+  const northStarMet = dailyPlanReady && completedPriorityTask;
 
   const updateTaskMutation = useMutation({
     mutationFn: async ({ id, status }: { id: number; status: string }) => {
@@ -58,13 +72,12 @@ export default function TodayView() {
   });
 
   const toggleHabitMutation = useMutation({
-    mutationFn: async ({ habitId, completed }: { habitId: number; completed: boolean }) => {
-      return apiRequest('/api/habit-entries', {
+    mutationFn: async ({ habitId }: { habitId: number }) => {
+      return apiRequest('/api/habit-entries/toggle', {
         method: 'POST',
         body: JSON.stringify({
           habitId,
           date: today.dateStr,
-          completed,
         }),
       });
     },
@@ -79,12 +92,65 @@ export default function TodayView() {
     low: 'text-green-500',
   };
 
+  const handleCreateBackup = async () => {
+    try {
+      const token = localStorage.getItem("auth_token");
+      const response = await fetch("/api/backup/create", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error("backup failed");
+      const result = await response.json();
+      const recordsText =
+        result && typeof result.totalRecords === "number"
+          ? `${result.totalRecords} records protected.`
+          : "Backup snapshot created successfully.";
+      toast({
+        title: "Backup snapshot created",
+        description: recordsText,
+      });
+    } catch {
+      toast({
+        title: "Backup failed",
+        description: "Could not create backup snapshot.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleExportZip = async () => {
+    try {
+      const token = localStorage.getItem("auth_token");
+      const response = await fetch("/api/export/zip", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error("zip failed");
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.style.display = "none";
+      a.href = url;
+      a.download = `productivity_backup_${new Date().toISOString().split("T")[0]}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast({ title: "Backup ZIP downloaded" });
+    } catch {
+      toast({
+        title: "ZIP export failed",
+        description: "Could not export ZIP backup.",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">{today.displayDate}</h2>
-          <p className="text-muted-foreground">Your daily productivity snapshot</p>
+          <p className="text-muted-foreground">Plan your day fast, stay focused, finish what matters.</p>
         </div>
         <div className="flex items-center gap-4">
           <div className="text-center">
@@ -152,20 +218,20 @@ export default function TodayView() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center justify-between text-lg">
               <span className="flex items-center gap-2">
                 <CheckCircle2 className="w-5 h-5 text-blue-500" />
-                Today's Tasks
+                Plan (Top 3 Priorities)
               </span>
-              <Badge variant="outline">{completedTasksCount}/{todayTasks.length}</Badge>
+              <Badge variant={dailyPlanReady ? "default" : "outline"}>{topThreePriorities.length}/3</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 max-h-[300px] overflow-y-auto">
-            {todayTasks.length > 0 ? (
-              todayTasks.map(task => (
+            {topThreePriorities.length > 0 ? (
+              topThreePriorities.map(task => (
                 <div 
                   key={task.id} 
                   className={`flex items-center gap-3 p-3 rounded-lg border ${
@@ -195,7 +261,7 @@ export default function TodayView() {
                 </div>
               ))
             ) : (
-              <p className="text-center text-muted-foreground py-8">No tasks for today</p>
+              <p className="text-center text-muted-foreground py-8">No priority tasks yet. Add your top 3 to start.</p>
             )}
           </CardContent>
         </Card>
@@ -204,13 +270,16 @@ export default function TodayView() {
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center justify-between text-lg">
               <span className="flex items-center gap-2">
-                <Target className="w-5 h-5 text-green-500" />
-                Today's Habits
+                <Clock className="w-5 h-5 text-indigo-500" />
+                Do (Focus + Habits)
               </span>
               <Badge variant="outline">{completedHabitsCount}/{todayHabits.length}</Badge>
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 max-h-[300px] overflow-y-auto">
+          <CardContent className="space-y-3 max-h-[300px] overflow-y-auto">
+            <div className="overflow-x-auto pb-1">
+              <PomodoroTimer />
+            </div>
             {todayHabits.length > 0 ? (
               todayHabits.map(habit => (
                 <div 
@@ -221,10 +290,9 @@ export default function TodayView() {
                 >
                   <Checkbox
                     checked={habit.completed}
-                    onCheckedChange={(checked) => {
+                    onCheckedChange={() => {
                       toggleHabitMutation.mutate({
                         habitId: habit.id,
-                        completed: !!checked,
                       });
                     }}
                   />
@@ -244,37 +312,70 @@ export default function TodayView() {
             )}
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center justify-between text-lg">
+              <span className="flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-purple-500" />
+                Review
+              </span>
+              <Badge variant={northStarMet ? "default" : "secondary"}>
+                {northStarMet ? "North Star Met" : "In Progress"}
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <div className="flex justify-between text-sm mb-2">
+                <span>Tasks ({Math.round(flowScore.tasksScore)}%)</span>
+                <span>{completedTasksCount}/{todayTasks.length}</span>
+              </div>
+              <Progress value={flowScore.tasksScore} className="h-2" />
+            </div>
+            <div>
+              <div className="flex justify-between text-sm mb-2">
+                <span>Habits ({Math.round(flowScore.habitsScore)}%)</span>
+                <span>{completedHabitsCount}/{todayHabits.length}</span>
+              </div>
+              <Progress value={flowScore.habitsScore} className="h-2" />
+            </div>
+            <div>
+              <div className="flex justify-between text-sm mb-2">
+                <span>Focus ({Math.round(flowScore.focusScore)}%)</span>
+                <span>{flowScore.focusMinutes}/{flowScore.focusGoalMinutes}m</span>
+              </div>
+              <Progress value={flowScore.focusScore} className="h-2" />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              North star = top-3 plan ready + at least one high-priority task completed.
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <TrendingUp className="w-5 h-5 text-purple-500" />
-            Today's Progress
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Shield className="w-5 h-5 text-green-600" />
+            Data Safety (Quick Actions)
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <div className="flex justify-between text-sm mb-2">
-              <span>Tasks ({Math.round(flowScore.tasksScore)}%)</span>
-              <span>{completedTasksCount}/{todayTasks.length} completed</span>
-            </div>
-            <Progress value={flowScore.tasksScore} className="h-2" />
-          </div>
-          <div>
-            <div className="flex justify-between text-sm mb-2">
-              <span>Habits ({Math.round(flowScore.habitsScore)}%)</span>
-              <span>{completedHabitsCount}/{todayHabits.length} completed</span>
-            </div>
-            <Progress value={flowScore.habitsScore} className="h-2" />
-          </div>
-          <div>
-            <div className="flex justify-between text-sm mb-2">
-              <span>Focus Time ({Math.round(flowScore.focusScore)}%)</span>
-              <span>{flowScore.focusMinutes}/{flowScore.focusGoalMinutes} minutes</span>
-            </div>
-            <Progress value={flowScore.focusScore} className="h-2" />
-          </div>
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Button variant="outline" onClick={handleCreateBackup}>
+            <Shield className="mr-2 h-4 w-4" />
+            Create Backup Snapshot
+          </Button>
+          <Button variant="outline" onClick={handleExportZip}>
+            <Archive className="mr-2 h-4 w-4" />
+            Download ZIP Backup
+          </Button>
+          <Button asChild variant="ghost" className="md:col-span-2">
+            <a href="/admin">
+              <Download className="mr-2 h-4 w-4" />
+              Open Full Data Export Center
+            </a>
+          </Button>
         </CardContent>
       </Card>
     </div>

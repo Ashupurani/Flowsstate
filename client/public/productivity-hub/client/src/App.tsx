@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -33,8 +34,8 @@ function Router() {
           <Route path="/" component={Welcome} />
         ) : (
           <>
-            <Route path="/" component={Dashboard} />
-            <Route path="/today" component={Today} />
+            <Route path="/" component={Today} />
+            <Route path="/dashboard" component={Dashboard} />
             <Route path="/suggestions" component={SuggestionsPage} />
             <Route path="/analytics" component={Analytics} />
             <Route path="/goals" component={Goals} />
@@ -49,6 +50,19 @@ function Router() {
 }
 
 function App() {
+  useEffect(() => {
+    const onError = () => {
+      try {
+        const current = Number(sessionStorage.getItem("sessionCrashCount") || "0");
+        sessionStorage.setItem("sessionCrashCount", String(current + 1));
+      } catch {
+        // no-op
+      }
+    };
+    window.addEventListener("error", onError);
+    return () => window.removeEventListener("error", onError);
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider defaultTheme="light" storageKey="productivity-theme">
