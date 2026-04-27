@@ -24,7 +24,7 @@ export default function Dashboard() {
   useMicroWins();
 
   useEffect(() => {
-    document.title = "Productivity Hub - Your Personal Dashboard";
+    document.title = "Flowsstate - Your Personal Dashboard";
   }, []);
 
   useEffect(() => {

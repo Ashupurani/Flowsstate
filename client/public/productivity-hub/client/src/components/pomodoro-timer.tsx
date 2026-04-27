@@ -59,7 +59,7 @@ export default function PomodoroTimer() {
         if (Notification.permission === 'granted') {
           new Notification(sessionType === 'focus' ? "Focus Complete!" : "Break Over!", {
             body: nextType === 'focus' ? "Ready to focus again?" : "Time for a break!",
-            icon: '/favicon.png'
+            icon: '/logo.png'
           });
         }
       }

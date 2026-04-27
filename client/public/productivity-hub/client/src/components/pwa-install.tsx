@@ -100,7 +100,7 @@ export default function PWAInstall() {
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-2">
               <Smartphone size={24} className="text-primary" />
-              <span>Install Productivity Hub</span>
+              <span>Install Flowsstate</span>
             </DialogTitle>
             <DialogDescription>
               Get the full app experience with offline access and native features.

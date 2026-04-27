@@ -24,7 +24,7 @@ export default function Welcome() {
   }, []);
 
   useEffect(() => {
-    document.title = "Welcome to Productivity Hub - Your Personal Productivity Platform";
+    document.title = "Welcome to Flowsstate - Your Personal Productivity Platform";
     setIsVisible(true);
     // Load demo video path from localStorage
     const storedVideoPath = localStorage.getItem('demoVideoPath');
@@ -89,9 +89,9 @@ export default function Welcome() {
         
         <div className="relative container mx-auto px-6 pt-16 pb-24">
           <div className={`text-center transition-all duration-1000 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
-            <img 
-              src="/favicon.png" 
-              alt="Productivity Hub Logo" 
+            <img
+              src="/logo.png"
+              alt="Flowsstate Logo"
               className="w-20 h-20 mx-auto mb-4 object-contain"
             />
             <Badge variant="secondary" className="mb-4 text-sm font-medium">
@@ -100,7 +100,7 @@ export default function Welcome() {
             </Badge>
             
             <h1 className="text-5xl md:text-7xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent mb-6">
-              Productivity Hub
+              Flowsstate
             </h1>
             
             <p className="text-xl md:text-2xl text-gray-600 dark:text-gray-300 mb-8 max-w-3xl mx-auto leading-relaxed">
@@ -125,13 +125,13 @@ export default function Welcome() {
                 </DialogTrigger>
                 <DialogContent className="max-w-4xl w-full">
                   <DialogHeader>
-                    <DialogTitle>Productivity Hub Demo</DialogTitle>
+                    <DialogTitle>Flowsstate Demo</DialogTitle>
                   </DialogHeader>
                   <div className="mt-4">
                     {demoVideoPath ? (
                       <VideoPlayer 
                         videoPath={demoVideoPath} 
-                        title="Productivity Hub Demo"
+                        title="Flowsstate Demo"
                         className="w-full"
                       />
                     ) : (
@@ -209,7 +209,7 @@ export default function Welcome() {
             Ready to Transform Your Productivity?
           </h2>
           <p className="text-xl text-blue-100 mb-8 max-w-2xl mx-auto">
-            Join thousands of professionals who have already revolutionized their workflow with Productivity Hub.
+            Join thousands of professionals who have already revolutionized their workflow with Flowsstate.
           </p>
           <Button 
             size="lg" 
@@ -226,7 +226,7 @@ export default function Welcome() {
       <div className="bg-gray-900 dark:bg-slate-950 py-8">
         <div className="container mx-auto px-6 text-center">
           <p className="text-gray-400 text-sm">
-            © 2025 Productivity Hub. Built with modern technology for modern professionals.
+            © 2025 Flowsstate. Built with modern technology for modern professionals.
           </p>
         </div>
       </div>

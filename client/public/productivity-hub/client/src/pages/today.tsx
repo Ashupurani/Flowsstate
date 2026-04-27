@@ -9,7 +9,7 @@ export default function Today() {
   useMicroWins();
 
   useEffect(() => {
-    document.title = "Today - Productivity Hub";
+    document.title = "Today - Flowsstate";
   }, []);
 
   return (

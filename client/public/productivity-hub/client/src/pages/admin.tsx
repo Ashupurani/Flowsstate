@@ -112,7 +112,7 @@ export default function AdminPage() {
                 <div className="max-w-2xl">
                   <VideoPlayer 
                     videoPath={demoVideoPath} 
-                    title="Productivity Hub Demo"
+                    title="Flowsstate Demo"
                   />
                 </div>
               ) : (

@@ -238,7 +238,7 @@ export default function SmartNotifications() {
     if (criticalNotif) {
       new Notification(criticalNotif.title, {
         body: criticalNotif.message,
-        icon: '/favicon.png',
+        icon: '/logo.png',
         tag: 'productivity-hub-alert',
       });
       localStorage.setItem('lastBrowserNotification', new Date().toISOString());

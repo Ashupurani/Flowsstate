@@ -85,14 +85,14 @@ export default function Header() {
           {/* Logo and Navigation */}
           <div className="flex items-center space-x-4 md:space-x-6 flex-1 min-w-0">
             <div className="flex items-center space-x-2 md:space-x-3 min-w-0">
-              <img 
-                src="/favicon.png" 
-                alt="Productivity Hub Logo" 
+              <img
+                src="/logo.png"
+                alt="Flowsstate Logo"
                 className="w-10 h-10 flex-shrink-0 object-contain"
               />
               <div className="min-w-0 flex-1">
                 <h1 className="text-lg md:text-xl font-semibold text-gray-900 dark:text-white truncate">
-                  Productivity Hub
+                  Flowsstate
                 </h1>
                 {selectedDate && (
                   <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400 truncate">

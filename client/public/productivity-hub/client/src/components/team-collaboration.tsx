@@ -67,13 +67,13 @@ export default function TeamCollaboration() {
 
   const generateInvitationEmail = (inviteData: { email: string; role: string; inviterName: string }) => {
     const emailTemplate = `
-Subject: You've been invited to join our Productivity Hub team!
+Subject: You've been invited to join our Flowsstate team!
 
 Dear ${inviteData.email},
 
-${inviteData.inviterName} has invited you to join their team on Productivity Hub as a ${inviteData.role}.
+${inviteData.inviterName} has invited you to join their team on Flowsstate as a ${inviteData.role}.
 
-Productivity Hub is a comprehensive productivity platform that combines:
+Flowsstate is a comprehensive productivity platform that combines:
 - Task management with Kanban-style boards
 - Daily habit tracking with streak rewards
 - Pomodoro timer for focused work sessions
@@ -101,7 +101,7 @@ If you have any questions, feel free to reach out to ${inviteData.inviterName} o
 Welcome to more productive teamwork!
 
 Best regards,
-The Productivity Hub Team
+The Flowsstate Team
 
 ---
 This invitation was sent by ${inviteData.inviterName} on ${new Date().toLocaleDateString()}.

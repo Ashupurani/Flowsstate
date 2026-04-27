@@ -246,7 +246,7 @@ export function AuthForms() {
     <Card className="w-full max-w-md mx-auto bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm border-0 shadow-2xl">
       <CardHeader className="text-center pb-4">
         <CardTitle className="text-2xl font-bold text-gray-900 dark:text-white">
-          Welcome to Productivity Hub
+          Welcome to Flowsstate
         </CardTitle>
         <CardDescription className="text-gray-600 dark:text-gray-300">
           {isLogin ? "Sign in to your account" : "Create your account"}
