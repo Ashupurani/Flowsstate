@@ -10,6 +10,7 @@ import {
   ObjectNotFoundError,
 } from "./objectStorage";
 import { createDataBackup, exportUserData } from "./backup";
+import { getPaginationParams, createPaginatedResponse } from "./pagination";
 import archiver from "archiver";
 import { sendEmail, getDisplayFromAddress } from "./email";
 import * as XLSX from 'xlsx';
@@ -513,8 +514,14 @@ For support, contact: support@productivityhub.com
   app.get("/api/tasks", authenticateToken, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const tasks = await storage.getTasks(userId);
-      res.json(tasks);
+      const { limit, offset } = getPaginationParams(req.query);
+
+      const allTasks = await storage.getTasks(userId);
+      const total = allTasks.length;
+      const paginatedTasks = allTasks.slice(offset, offset + limit);
+
+      const response = createPaginatedResponse(paginatedTasks, limit, offset, total);
+      res.json(response);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch tasks" });
     }
@@ -586,8 +593,14 @@ For support, contact: support@productivityhub.com
   app.get("/api/habits", authenticateToken, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const habits = await storage.getHabits(userId);
-      res.json(habits);
+      const { limit, offset } = getPaginationParams(req.query);
+
+      const allHabits = await storage.getHabits(userId);
+      const total = allHabits.length;
+      const paginatedHabits = allHabits.slice(offset, offset + limit);
+
+      const response = createPaginatedResponse(paginatedHabits, limit, offset, total);
+      res.json(response);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch habits" });
     }
@@ -695,8 +708,14 @@ For support, contact: support@productivityhub.com
   app.get("/api/goals", authenticateToken, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const userGoals = await storage.getGoals(userId);
-      res.json(userGoals);
+      const { limit, offset } = getPaginationParams(req.query);
+
+      const allGoals = await storage.getGoals(userId);
+      const total = allGoals.length;
+      const paginatedGoals = allGoals.slice(offset, offset + limit);
+
+      const response = createPaginatedResponse(paginatedGoals, limit, offset, total);
+      res.json(response);
     } catch (error) {
       console.error("Error fetching goals:", error);
       res.status(500).json({ message: "Failed to fetch goals" });
