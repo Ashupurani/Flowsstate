@@ -12,6 +12,7 @@ import DailyFlowWidget from "@/components/daily-flow-widget";
 import FocusMode from "@/components/focus-mode";
 import TaskTemplates from "@/components/task-templates";
 import { useMicroWins } from "@/hooks/use-micro-wins";
+import { useAuth } from "@/hooks/useAuth";
 
 import MobileBottomNav from "@/components/mobile-bottom-nav";
 import { useLayoutStore } from "@/lib/store";
@@ -19,13 +20,15 @@ import { useLayoutStore } from "@/lib/store";
 export default function Dashboard() {
   const { leftSidebarCollapsed, rightSidebarCollapsed } = useLayoutStore();
   const [focusModeOpen, setFocusModeOpen] = useState(false);
-  
+  const { user } = useAuth();
+
   // Enable micro-win toast notifications
   useMicroWins();
 
   useEffect(() => {
-    document.title = "Flowsstate - Your Personal Dashboard";
-  }, []);
+    const firstName = user?.name?.split(" ")[0] || "Your";
+    document.title = `Flowsstate - ${firstName}'s Personal Dashboard`;
+  }, [user]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

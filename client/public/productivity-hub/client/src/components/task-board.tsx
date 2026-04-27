@@ -91,26 +91,16 @@ export default function TaskBoard() {
     console.log('🔥 VIEWING WEEK KEY:', weekKey, selectedCalendarDate ? '(from calendar)' : '(current week)');
   }, [selectedCalendarDate, weekStartDate]);
 
-  // Query for all tasks - this is our primary data source
+  // Query tasks for the currently viewed week only (avoids pagination truncation)
   const { data: allTasks = [] } = useQuery<Task[]>({
-    queryKey: ["/api/tasks"],
+    queryKey: ["/api/tasks/week", currentWeekKey],
+    enabled: !!currentWeekKey,
   });
-
-  // Debug tasks loading
-  useEffect(() => {
-    console.log('🔥 ALL TASKS LOADED:', allTasks.length);
-    if (allTasks.length > 0) {
-      console.log('🔥 SAMPLE TASK:', allTasks[0]);
-    }
-  }, [allTasks]);
 
   // Use consistent week key calculation
   const getWeekKeyFromDate = (date: Date): string => {
     return calculateWeekKey(date);
   };
-
-  // Don't use week-specific query as it changes with calendar navigation
-  // Instead rely on the allTasks query which is stable
 
 
 
@@ -119,27 +109,19 @@ export default function TaskBoard() {
       return apiRequest(`/api/tasks/${id}`, { method: "PUT", body: JSON.stringify(updates) });
     },
     onMutate: async ({ id, updates }) => {
-      // Cancel any outgoing refetches so they don't overwrite optimistic update
-      await queryClient.cancelQueries({ queryKey: ["/api/tasks"] });
-      
-      // Snapshot the previous value
-      const previousTasks = queryClient.getQueryData<Task[]>(["/api/tasks"]);
-      
-      // Optimistically update the cache immediately
-      queryClient.setQueryData<Task[]>(["/api/tasks"], (old) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/tasks/week", currentWeekKey] });
+      const previousTasks = queryClient.getQueryData<Task[]>(["/api/tasks/week", currentWeekKey]);
+      queryClient.setQueryData<Task[]>(["/api/tasks/week", currentWeekKey], (old) => {
         if (!old) return old;
         return old.map((task) =>
           task.id === id ? { ...task, ...updates } : task
         );
       });
-      
-      // Return context with the snapshot for rollback
       return { previousTasks };
     },
     onError: (error, variables, context) => {
-      // Rollback to the previous value on error
       if (context?.previousTasks) {
-        queryClient.setQueryData(["/api/tasks"], context.previousTasks);
+        queryClient.setQueryData(["/api/tasks/week", currentWeekKey], context.previousTasks);
       }
       console.error('Task update failed:', error);
       toast({
@@ -149,8 +131,7 @@ export default function TaskBoard() {
       });
     },
     onSettled: () => {
-      // Refetch after mutation settles to ensure sync with server
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks/week", currentWeekKey] });
     },
   });
 
@@ -159,7 +140,7 @@ export default function TaskBoard() {
       return apiRequest(`/api/tasks/${id}`, { method: "DELETE" });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks/week", currentWeekKey] });
     },
   });
 
@@ -172,7 +153,7 @@ export default function TaskBoard() {
       });
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks/week", currentWeekKey] });
       toast({
         title: "Tasks Carried Forward",
         description: `${data.carriedTasks} incomplete tasks moved to current week`,
@@ -189,20 +170,13 @@ export default function TaskBoard() {
   });
 
   const getTasksByDayAndStatus = (day: string, status: string) => {
-    // Filter by day, status, AND week - tasks stay pinned to their exact week
     const filtered = allTasks.filter(task => {
       const matchesDay = task.dayOfWeek === day;
       const matchesStatus = task.status === status;
-      
-      // IMPORTANT: Only show tasks that belong to the currently viewed week
-      const matchesWeek = task.weekKey === currentWeekKey;
-      
-      // Normalize both values for comparison to handle whitespace/casing variants
       const normalizedTaskCategory = typeof task.category === "string" ? task.category.trim() : "";
       const normalizedSelectedCategory = selectedCategory.trim();
       const matchesCategory = normalizedSelectedCategory === "all" || normalizedTaskCategory === normalizedSelectedCategory;
-      
-      return matchesDay && matchesStatus && matchesCategory && matchesWeek;
+      return matchesDay && matchesStatus && matchesCategory;
     });
     
     return filtered;
