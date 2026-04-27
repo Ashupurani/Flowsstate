@@ -1,7 +1,7 @@
 {
-  "name": "Productivity Hub",
-  "short_name": "Productivity Hub",
-  "description": "Complete productivity solution with task management, habit tracking, and AI insights",
+  "name": "Flowsstate",
+  "short_name": "Flowsstate",
+  "description": "Task management, habit tracking, Pomodoro timer, team collaboration, and AI insights in one place.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#6366f1",
@@ -9,8 +9,8 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/favicon.png",
-      "sizes": "256x256",
+      "src": "/logo.png",
+      "sizes": "any",
       "type": "image/png",
       "purpose": "any maskable"
     }
