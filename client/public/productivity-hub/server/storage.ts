@@ -844,8 +844,8 @@ export class DatabaseStorage implements IStorage {
     })
     .from(teamInvitations)
     .innerJoin(users, eq(teamInvitations.invitedBy, users.id))
-    .where(eq(teamInvitations.teamId, teamId));
-    
+    .where(and(eq(teamInvitations.teamId, teamId), eq(teamInvitations.status, "pending")));
+
     return result;
   }
 

@@ -1528,9 +1528,9 @@ For support, contact: support@productivityhub.com
   app.post("/api/workspaces", authenticateToken, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const { name, description, color, icon } = req.body;
+      const { name, description, color, icon, type } = req.body;
       if (!name?.trim()) return res.status(400).json({ message: "Name is required" });
-      const ws = await storage.createWorkspace({ name: name.trim(), description, color: color || "#6366f1", icon: icon || "folder", ownerId: userId, isArchived: false });
+      const ws = await storage.createWorkspace({ name: name.trim(), description, color: color || "#6366f1", icon: icon || "folder", type: type === "personal" ? "personal" : "team", ownerId: userId, isArchived: false });
       await storage.logWorkspaceActivity({ workspaceId: ws.id, userId, action: "workspace_created", metadata: { name: ws.name } });
       res.json(ws);
     } catch (e) { res.status(500).json({ message: "Failed to create workspace" }); }
@@ -1553,8 +1553,8 @@ For support, contact: support@productivityhub.com
       const wsId = parseInt(req.params.id);
       const member = await assertWorkspaceMember(req.user!.id, wsId);
       if (!canManageWorkspace(member.role)) return res.status(403).json({ message: "Insufficient permissions" });
-      const { name, description, color, icon } = req.body;
-      const ws = await storage.updateWorkspace(wsId, { name, description, color, icon });
+      const { name, description, color, icon, type } = req.body;
+      const ws = await storage.updateWorkspace(wsId, { name, description, color, icon, ...(type ? { type } : {}) });
       await storage.logWorkspaceActivity({ workspaceId: wsId, userId: req.user!.id, action: "workspace_updated", metadata: { name: ws.name } });
       res.json(ws);
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }

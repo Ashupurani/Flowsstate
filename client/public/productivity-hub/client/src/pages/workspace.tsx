@@ -24,7 +24,7 @@ import {
   Copy, Check, MoreHorizontal, Pin, PinOff,
   Briefcase, Code, Star, Heart, Home, Zap, Flame, Target,
   Layers, Book, Globe, Music, Coffee, Trophy, ChevronLeft, ChevronRight,
-  AlertCircle, X,
+  AlertCircle, X, User, Building2,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -35,6 +35,7 @@ interface Workspace {
   description: string | null;
   color: string;
   icon: string;
+  type: string; // "personal" | "team"
   ownerId: number;
   isArchived: boolean;
   createdAt: string;
@@ -166,16 +167,18 @@ function CreateWorkspaceModal({
   const [description, setDescription] = useState(workspace?.description ?? "");
   const [color, setColor] = useState(workspace?.color ?? "#6366f1");
   const [icon, setIcon] = useState(workspace?.icon ?? "folder");
+  const [type, setType] = useState<"personal" | "team">(workspace?.type === "personal" ? "personal" : "team");
 
   useEffect(() => {
     setName(workspace?.name ?? "");
     setDescription(workspace?.description ?? "");
     setColor(workspace?.color ?? "#6366f1");
     setIcon(workspace?.icon ?? "folder");
+    setType(workspace?.type === "personal" ? "personal" : "team");
   }, [workspace, open]);
 
   const mutation = useMutation({
-    mutationFn: (data: { name: string; description: string; color: string; icon: string }) =>
+    mutationFn: (data: { name: string; description: string; color: string; icon: string; type: string }) =>
       workspace
         ? apiRequest("PUT", `/api/workspaces/${workspace.id}`, data)
         : apiRequest("POST", "/api/workspaces", data),
@@ -195,9 +198,31 @@ function CreateWorkspaceModal({
           <DialogTitle>{workspace ? "Edit Workspace" : "New Workspace"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
+          {/* Workspace type selector */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setType("personal")}
+              className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${type === "personal" ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20" : "border-muted hover:border-muted-foreground/30"}`}
+            >
+              <User size={20} className={type === "personal" ? "text-indigo-600" : "text-muted-foreground"} />
+              <span className={`text-sm font-medium ${type === "personal" ? "text-indigo-700 dark:text-indigo-300" : "text-muted-foreground"}`}>Personal</span>
+              <span className="text-xs text-muted-foreground text-center leading-tight">Private, solo workspace</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setType("team")}
+              className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${type === "team" ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20" : "border-muted hover:border-muted-foreground/30"}`}
+            >
+              <Building2 size={20} className={type === "team" ? "text-indigo-600" : "text-muted-foreground"} />
+              <span className={`text-sm font-medium ${type === "team" ? "text-indigo-700 dark:text-indigo-300" : "text-muted-foreground"}`}>Team</span>
+              <span className="text-xs text-muted-foreground text-center leading-tight">Collaborative, role-based</span>
+            </button>
+          </div>
+
           <div className="space-y-1.5">
             <Label>Name</Label>
-            <Input placeholder="My Team Workspace" value={name} onChange={e => setName(e.target.value)} />
+            <Input placeholder={type === "personal" ? "My Workspace" : "Team Workspace"} value={name} onChange={e => setName(e.target.value)} />
           </div>
           <div className="space-y-1.5">
             <Label>Description <span className="text-muted-foreground text-xs">(optional)</span></Label>
@@ -240,7 +265,7 @@ function CreateWorkspaceModal({
             <span className="font-medium text-sm truncate">{name || "Workspace name"}</span>
           </div>
           <div className="flex gap-2">
-            <Button className="flex-1" disabled={!name.trim() || mutation.isPending} onClick={() => mutation.mutate({ name, description, color, icon })}>
+            <Button className="flex-1" disabled={!name.trim() || mutation.isPending} onClick={() => mutation.mutate({ name, description, color, icon, type })}>
               {mutation.isPending ? "Saving..." : workspace ? "Save Changes" : "Create Workspace"}
             </Button>
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
@@ -941,7 +966,14 @@ export default function WorkspacePage() {
                   <div className="w-6 h-6 rounded-md flex-shrink-0 flex items-center justify-center text-white" style={{ backgroundColor: ws.color }}>
                     <WorkspaceIcon name={ws.icon} size={12} />
                   </div>
-                  {!sidebarCollapsed && <span className="truncate text-left flex-1">{ws.name}</span>}
+                  {!sidebarCollapsed && (
+                    <span className="truncate text-left flex-1">{ws.name}</span>
+                  )}
+                  {!sidebarCollapsed && (
+                    <span className="flex-shrink-0 opacity-40" title={ws.type === "personal" ? "Personal" : "Team"}>
+                      {ws.type === "personal" ? <User size={11} /> : <Building2 size={11} />}
+                    </span>
+                  )}
                 </button>
               ))
             )}
@@ -999,7 +1031,13 @@ export default function WorkspacePage() {
                   <WorkspaceIcon name={selected.icon} size={24} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h1 className="text-2xl font-bold truncate">{selected.name}</h1>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h1 className="text-2xl font-bold truncate">{selected.name}</h1>
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${selected.type === "personal" ? "bg-purple-100 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300" : "bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300"}`}>
+                      {selected.type === "personal" ? <User size={10} /> : <Building2 size={10} />}
+                      {selected.type === "personal" ? "Personal" : "Team"}
+                    </span>
+                  </div>
                   {selected.description && <p className="text-muted-foreground text-sm mt-0.5">{selected.description}</p>}
                 </div>
                 <RoleBadge role={myRole} />
@@ -1011,9 +1049,11 @@ export default function WorkspacePage() {
                   <TabsTrigger value="content" className="flex items-center gap-1.5">
                     <FileText size={13} /> Content
                   </TabsTrigger>
-                  <TabsTrigger value="members" className="flex items-center gap-1.5">
-                    <Users size={13} /> Members
-                  </TabsTrigger>
+                  {selected.type === "team" && (
+                    <TabsTrigger value="members" className="flex items-center gap-1.5">
+                      <Users size={13} /> Members
+                    </TabsTrigger>
+                  )}
                   <TabsTrigger value="activity" className="flex items-center gap-1.5">
                     <Activity size={13} /> Activity
                   </TabsTrigger>

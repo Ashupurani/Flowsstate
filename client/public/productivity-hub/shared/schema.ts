@@ -116,6 +116,7 @@ export const workspaces = pgTable("workspaces", {
   description: text("description"),
   color: text("color").notNull().default("#6366f1"),
   icon: text("icon").notNull().default("folder"),
+  type: text("type").notNull().default("team"), // "personal" | "team"
   ownerId: integer("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   isArchived: boolean("is_archived").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),

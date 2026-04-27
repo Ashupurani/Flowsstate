@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, Lightbulb, Clock, AlertTriangle, CheckCircle, Trash2, Calendar, Loader2, Filter } from "lucide-react";
+import { Plus, Lightbulb, Clock, AlertTriangle, CheckCircle, Trash2, Calendar, Loader2, Filter, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -100,6 +100,20 @@ export default function TaskBoard() {
   // Use consistent week key calculation
   const getWeekKeyFromDate = (date: Date): string => {
     return calculateWeekKey(date);
+  };
+
+  const isCurrentWeek = currentWeekKey === calculateWeekKey(new Date());
+
+  const navigateWeek = (direction: -1 | 1) => {
+    const [y, m, d] = currentWeekKey.split("-").map(Number);
+    const base = new Date(y, m - 1, d);
+    base.setDate(base.getDate() + direction * 7);
+    setSelectedCalendarDate(base);
+  };
+
+  const goToToday = () => {
+    setSelectedCalendarDate(null);
+    setCurrentWeekKey(calculateWeekKey(new Date()));
   };
 
 
@@ -240,24 +254,25 @@ export default function TaskBoard() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-            {selectedCalendarDate ? 'Daily Task Board' : 'Weekly Task Board'}
+            Weekly Task Board
           </h2>
-          <p className="text-gray-500 dark:text-gray-400 flex items-center">
-            <i className="fas fa-calendar-alt mr-2 text-sm"></i>
-            {selectedCalendarDate 
-              ? selectedCalendarDate.toLocaleDateString('en-US', { 
-                  weekday: 'long',
-                  month: 'long', 
-                  day: 'numeric',
-                  year: 'numeric' 
-                })
-              : `${new Date().toLocaleDateString('en-US', { 
-                  month: 'long', 
-                  day: 'numeric',
-                  year: 'numeric' 
-                })} - Week View`
-            }
-          </p>
+          {/* Week navigation */}
+          <div className="flex items-center gap-1 mt-1">
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => navigateWeek(-1)} title="Previous week">
+              <ChevronLeft size={14} />
+            </Button>
+            <span className="text-sm text-gray-500 dark:text-gray-400 min-w-[160px] text-center">
+              Week of {new Date(currentWeekKey + "T00:00:00").toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            </span>
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => navigateWeek(1)} title="Next week">
+              <ChevronRight size={14} />
+            </Button>
+            {!isCurrentWeek && (
+              <Button variant="outline" size="sm" className="h-7 text-xs ml-1" onClick={goToToday}>
+                Today
+              </Button>
+            )}
+          </div>
         </div>
         <div className="flex items-center space-x-2">
           {/* Category Filter */}
@@ -334,14 +349,24 @@ export default function TaskBoard() {
       {allTasks.length === 0 && (
         <div className="text-center py-16 bg-gray-50 dark:bg-slate-800 rounded-lg border-2 border-dashed border-gray-300 dark:border-slate-600">
           <div className="mx-auto w-24 h-24 bg-gray-200 dark:bg-slate-700 rounded-full flex items-center justify-center mb-6">
-            <Plus className="h-12 w-12 text-gray-400 dark:text-slate-500" />
+            <Calendar className="h-12 w-12 text-gray-400 dark:text-slate-500" />
           </div>
           <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-            No Tasks Yet
+            No tasks this week
           </h3>
-          <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-md mx-auto">
-            Get started by creating your first task. You can organize tasks by day of the week and track their progress.
+          <p className="text-gray-500 dark:text-gray-400 mb-4 max-w-md mx-auto">
+            Tasks from other weeks are still saved — use the arrows above to navigate to a different week, or add a new task for this week.
           </p>
+          <div className="flex items-center justify-center gap-2 mb-4">
+            <Button variant="outline" size="sm" onClick={() => navigateWeek(-1)}>
+              <ChevronLeft size={14} className="mr-1" /> Previous Week
+            </Button>
+            {!isCurrentWeek && (
+              <Button variant="outline" size="sm" onClick={goToToday}>
+                <Calendar size={14} className="mr-1" /> Current Week
+              </Button>
+            )}
+          </div>
           <Button 
             className="bg-primary text-white hover:bg-primary/90 shadow-lg"
             onClick={() => {

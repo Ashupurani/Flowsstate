@@ -79,6 +79,7 @@ export default function TeamCollaboration() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/team/my-invitations"] });
       queryClient.invalidateQueries({ queryKey: ["/api/team/members"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/team/invitations"] });
       toast({ title: "Invitation accepted!", description: "You've joined the team." });
     },
     onError: (error: Error) => {
