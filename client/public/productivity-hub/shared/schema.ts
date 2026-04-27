@@ -41,7 +41,7 @@ export const habits = pgTable("habits", {
 export const habitEntries = pgTable("habit_entries", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  habitId: integer("habit_id").notNull(),
+  habitId: integer("habit_id").notNull().references(() => habits.id, { onDelete: "cascade" }),
   date: text("date").notNull(), // YYYY-MM-DD format
   completed: boolean("completed").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -230,7 +230,8 @@ export const notifications = pgTable("notifications", {
 
 export const taskTimeEntries = pgTable("task_time_entries", {
   id: serial("id").primaryKey(),
-  taskId: integer("task_id").references(() => tasks.id, { onDelete: "cascade" }),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  taskId: integer("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
   startTime: timestamp("start_time").notNull(),
   endTime: timestamp("end_time"),
   duration: integer("duration"),
@@ -240,6 +241,8 @@ export const taskTimeEntries = pgTable("task_time_entries", {
 // Enhanced task schema with time tracking fields
 export const enhancedTasks = pgTable("enhanced_tasks", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  taskId: integer("task_id").references(() => tasks.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   category: text("category").notNull(),
   priority: text("priority").notNull().default("medium"),
@@ -253,6 +256,7 @@ export const enhancedTasks = pgTable("enhanced_tasks", {
   isTemplate: boolean("is_template").default(false),
   templateId: integer("template_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 // Schema exports
