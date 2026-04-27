@@ -13,14 +13,33 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+export function apiRequest(url: string, options?: RequestInit): Promise<any>;
+export function apiRequest(method: string, url: string, data?: unknown): Promise<any>;
 export async function apiRequest(
-  url: string,
-  options: RequestInit = {},
+  methodOrUrl: string,
+  urlOrOptions: string | RequestInit = {},
+  data?: unknown,
 ): Promise<any> {
+  let url: string;
+  let options: RequestInit;
+
+  if (typeof urlOrOptions === "string") {
+    const method = methodOrUrl;
+    url = urlOrOptions;
+    options = {
+      method,
+      ...(data !== undefined ? { body: JSON.stringify(data) } : {}),
+    };
+  } else {
+    url = methodOrUrl;
+    options = urlOrOptions;
+  }
+
   const token = localStorage.getItem("auth_token");
+  const hasFormDataBody = typeof FormData !== "undefined" && options.body instanceof FormData;
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(options.headers as Record<string, string> || {}),
+    ...(hasFormDataBody ? {} : { "Content-Type": "application/json" }),
+    ...((options.headers as Record<string, string>) || {}),
   };
   
   if (token) {

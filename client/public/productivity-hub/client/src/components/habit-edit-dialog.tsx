@@ -8,7 +8,6 @@ import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertHabitSchema } from "@shared/schema";
 import type { Habit } from "@shared/schema";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -45,6 +44,12 @@ const colorOptions = [
   { value: "orange-500", label: "Orange", color: "bg-orange-500" },
 ];
 
+const habitFormSchema = z.object({
+  name: z.string().min(1),
+  icon: z.string().min(1),
+  color: z.string().min(1),
+});
+
 export default function HabitEditDialog({ habit }: HabitEditDialogProps) {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -52,7 +57,7 @@ export default function HabitEditDialog({ habit }: HabitEditDialogProps) {
   const { toast } = useToast();
 
   const updateHabitMutation = useMutation({
-    mutationFn: async (data: z.infer<typeof insertHabitSchema>) => {
+    mutationFn: async (data: z.infer<typeof habitFormSchema>) => {
       return apiRequest("PUT", `/api/habits/${habit.id}`, data);
     },
     onSuccess: () => {
@@ -95,7 +100,7 @@ export default function HabitEditDialog({ habit }: HabitEditDialogProps) {
   });
 
   const form = useForm({
-    resolver: zodResolver(insertHabitSchema),
+    resolver: zodResolver(habitFormSchema),
     defaultValues: {
       name: habit.name,
       icon: habit.icon,
@@ -103,7 +108,7 @@ export default function HabitEditDialog({ habit }: HabitEditDialogProps) {
     },
   });
 
-  const onSubmit = (values: z.infer<typeof insertHabitSchema>) => {
+  const onSubmit = (values: z.infer<typeof habitFormSchema>) => {
     updateHabitMutation.mutate(values);
   };
 

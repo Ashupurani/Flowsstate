@@ -124,7 +124,7 @@ export default function AIInsights() {
             confidence: 90,
             actionable: true,
             priority: 'high',
-            data: { peakHour: peakTime, sessionCount: parseInt(peakHour[1]) }
+            data: { peakHour: peakTime, sessionCount: Number(peakHour[1]) }
           });
         }
       }

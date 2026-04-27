@@ -15,6 +15,9 @@ import { apiRequest } from "@/lib/queryClient";
 import { getStreakLength } from "@shared/achievements";
 import type { Habit, HabitEntry, InsertHabit, InsertHabitEntry } from "@shared/schema";
 
+type CreateHabitPayload = Omit<InsertHabit, "userId">;
+type CreateHabitEntryPayload = Omit<InsertHabitEntry, "userId">;
+
 interface EnhancedHabitSidebarProps {
   isCollapsed: boolean;
 }
@@ -54,7 +57,7 @@ export default function EnhancedHabitSidebar({ isCollapsed }: EnhancedHabitSideb
   const { data: habitEntries = [] } = useQuery<HabitEntry[]>({ queryKey: ["/api/habit-entries"] });
 
   const createHabit = useMutation({
-    mutationFn: (data: InsertHabit) => apiRequest("POST", "/api/habits", data),
+    mutationFn: (data: CreateHabitPayload) => apiRequest("POST", "/api/habits", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/habits"] });
       setIsCreateDialogOpen(false);
@@ -63,7 +66,7 @@ export default function EnhancedHabitSidebar({ isCollapsed }: EnhancedHabitSideb
   });
 
   const updateHabitEntry = useMutation({
-    mutationFn: (data: InsertHabitEntry) => apiRequest("POST", "/api/habit-entries", data),
+    mutationFn: (data: CreateHabitEntryPayload) => apiRequest("POST", "/api/habit-entries", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/habit-entries"] });
     },
@@ -78,7 +81,7 @@ export default function EnhancedHabitSidebar({ isCollapsed }: EnhancedHabitSideb
   });
 
   const handleCreateHabit = (formData: FormData) => {
-    const data: InsertHabit = {
+    const data: CreateHabitPayload = {
       name: formData.get("name") as string,
       icon: formData.get("icon") as string,
       color: formData.get("color") as string,

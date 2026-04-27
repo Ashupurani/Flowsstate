@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Trophy, Star, Target, Clock, Calendar, Zap, Award, TrendingUp } from "lucide-react";
-import type { Task, Habit, HabitEntry } from "@shared/schema";
+import type { Task, Habit, HabitEntry, PomodoroSession } from "@shared/schema";
 
 interface Achievement {
   id: string;
@@ -30,7 +30,7 @@ export default function Achievements() {
   const { data: tasks = [] } = useQuery<Task[]>({ queryKey: ["/api/tasks"] });
   const { data: habits = [] } = useQuery<Habit[]>({ queryKey: ["/api/habits"] });
   const { data: habitEntries = [] } = useQuery<HabitEntry[]>({ queryKey: ["/api/habit-entries"] });
-  const { data: pomodoroSessions = [] } = useQuery({ queryKey: ["/api/pomodoro-sessions"] });
+  const { data: pomodoroSessions = [] } = useQuery<PomodoroSession[]>({ queryKey: ["/api/pomodoro-sessions"] });
 
   // Calculate achievement progress
   const completedTasks = tasks.filter(t => t.status === 'completed').length;
