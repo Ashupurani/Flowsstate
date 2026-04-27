@@ -64,16 +64,16 @@ export async function sendVerificationEmail(email: string, name: string): Promis
   const emailContent = {
     to: email,
     from: getDisplayFromAddress('noreply'),
-    subject: 'Welcome to Productivity Hub - Verify Your Email',
+    subject: 'Welcome to Flowsstate - Verify Your Email',
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #3b82f6; margin: 0;">Productivity Hub</h1>
+          <h1 style="color: #3b82f6; margin: 0;">Flowsstate</h1>
           <p style="color: #64748b; margin: 5px 0;">Your Personal Productivity Platform</p>
         </div>
 
         <div style="background: linear-gradient(135deg, #3b82f6, #8b5cf6); padding: 30px; border-radius: 12px; text-align: center; margin-bottom: 30px;">
-          <h2 style="color: white; margin: 0 0 15px 0;">Welcome to Productivity Hub, ${name}!</h2>
+          <h2 style="color: white; margin: 0 0 15px 0;">Welcome to Flowsstate, ${name}!</h2>
           <p style="color: #e0e7ff; margin: 0;">Thank you for joining our community of productivity enthusiasts.</p>
         </div>
 
@@ -117,7 +117,7 @@ export async function sendVerificationEmail(email: string, name: string): Promis
           <p>If you didn't create this account, please ignore this email.</p>
           <p>This verification code will expire in 24 hours.</p>
           <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;">
-          <p>© 2025 Productivity Hub. Built for modern professionals.</p>
+          <p>© 2025 Flowsstate. Built for modern professionals.</p>
         </div>
       </div>
     `
@@ -131,7 +131,7 @@ export async function sendWelcomeEmail(email: string, name: string): Promise<boo
   const emailContent = {
     to: email,
     from: getDisplayFromAddress('welcome'),
-    subject: '🎉 Welcome to Productivity Hub - Let\'s Get Started!',
+    subject: '🎉 Welcome to Flowsstate - Let\'s Get Started!',
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="text-align: center; margin-bottom: 30px;">
@@ -162,14 +162,14 @@ export async function sendWelcomeEmail(email: string, name: string): Promise<boo
         <div style="text-align: center; margin-bottom: 25px;">
           <a href="${FRONTEND_URL}" 
              style="display: inline-block; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; text-decoration: none; padding: 15px 40px; border-radius: 8px; font-weight: bold; font-size: 16px;">
-            Launch Productivity Hub
+            Launch Flowsstate
           </a>
         </div>
         
         <div style="text-align: center; padding: 20px; color: #64748b; font-size: 14px;">
           <p>Need help? Reply to this email and our team will assist you.</p>
           <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;">
-          <p>© 2025 Productivity Hub. Empowering productivity, one task at a time.</p>
+          <p>© 2025 Flowsstate. Empowering productivity, one task at a time.</p>
         </div>
       </div>
     `

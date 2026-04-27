@@ -79,7 +79,7 @@ function createExcelWorkbook(data: any, userId: number): Buffer {
   
   // Create summary sheet
   const summaryData = [
-    ['Productivity Hub Data Export'],
+    ['Flowsstate Data Export'],
     [''],
     ['Export Date:', new Date().toISOString().split('T')[0]],
     ['User ID:', userId],
@@ -102,7 +102,7 @@ function createExcelWorkbook(data: any, userId: number): Buffer {
   
   // Style the summary sheet
   summarySheet['!cols'] = [{ width: 25 }, { width: 30 }];
-  summarySheet['A1'] = { v: 'Productivity Hub Data Export', t: 's', s: { font: { bold: true, sz: 16 } } };
+  summarySheet['A1'] = { v: 'Flowsstate Data Export', t: 's', s: { font: { bold: true, sz: 16 } } };
   
   XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
   
@@ -233,11 +233,11 @@ async function sendTeamInvitationEmail(email: string, inviterName: string, role:
   const emailContent = {
     to: email,
     from: getDisplayFromAddress('team'),
-    subject: `${inviterName} invited you to join their Productivity Hub team`,
+    subject: `${inviterName} invited you to join their Flowsstate team`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #3b82f6; margin: 0;">Productivity Hub</h1>
+          <h1 style="color: #3b82f6; margin: 0;">Flowsstate</h1>
           <p style="color: #64748b; margin: 5px 0;">Team Collaboration Platform</p>
         </div>
         
@@ -276,7 +276,7 @@ async function sendTeamInvitationEmail(email: string, inviterName: string, role:
           <p>If you don't want to join this team, you can safely ignore this email.</p>
           <p>This invitation will expire in 7 days.</p>
           <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;">
-          <p>© 2025 Productivity Hub. Built for modern teams.</p>
+          <p>© 2025 Flowsstate. Built for modern teams.</p>
         </div>
       </div>
     `
@@ -294,11 +294,11 @@ async function sendInvitationCancellationEmail(email: string, cancelledBy: strin
   const emailContent = {
     to: email,
     from: getDisplayFromAddress('noreply'),
-    subject: `Team invitation cancelled - Productivity Hub`,
+    subject: `Team invitation cancelled - Flowsstate`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #3b82f6; margin: 0;">Productivity Hub</h1>
+          <h1 style="color: #3b82f6; margin: 0;">Flowsstate</h1>
           <p style="color: #64748b; margin: 5px 0;">Team Collaboration Platform</p>
         </div>
         
@@ -325,7 +325,7 @@ async function sendInvitationCancellationEmail(email: string, cancelledBy: strin
           <div style="text-align: center;">
             <a href="${FRONTEND_URL}" 
                style="display: inline-block; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; text-decoration: none; padding: 12px 30px; border-radius: 6px; font-weight: bold;">
-              Visit Productivity Hub
+              Visit Flowsstate
             </a>
           </div>
         </div>
@@ -333,7 +333,7 @@ async function sendInvitationCancellationEmail(email: string, cancelledBy: strin
         <div style="text-align: center; padding: 20px; color: #64748b; font-size: 14px;">
           <p>If you have any questions, please contact the team administrator.</p>
           <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;">
-          <p>© 2025 Productivity Hub. Built for modern teams.</p>
+          <p>© 2025 Flowsstate. Built for modern teams.</p>
         </div>
       </div>
     `
@@ -446,7 +446,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Add a README file
-      const readme = `Productivity Hub Data Export
+      const readme = `Flowsstate Data Export
 ============================
 
 Export Date: ${new Date().toISOString()}
@@ -460,7 +460,7 @@ Files Included:
 - pomodoro_sessions.csv: Focus session history
 
 This export contains all your productivity data for backup and analysis purposes.
-You can import this data back into Productivity Hub or use it with other tools.
+You can import this data back into Flowsstate or use it with other tools.
 
 For support, contact: support@productivityhub.com
 `;

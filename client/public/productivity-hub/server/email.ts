@@ -31,10 +31,10 @@ export function getEmailAddress(type: 'noreply' | 'welcome' | 'support' | 'team'
 export function getDisplayFromAddress(type: 'noreply' | 'welcome' | 'support' | 'team'): string {
   // These are the display names that show in email clients
   const addresses = {
-    noreply: `Productivity Hub <${VERIFIED_SENDER}>`,
-    welcome: `Productivity Hub Welcome <${VERIFIED_SENDER}>`,
-    support: `Productivity Hub Support <${VERIFIED_SENDER}>`,
-    team: `Productivity Hub Teams <${VERIFIED_SENDER}>`
+    noreply: `Flowsstate <${VERIFIED_SENDER}>`,
+    welcome: `Flowsstate Welcome <${VERIFIED_SENDER}>`,
+    support: `Flowsstate Support <${VERIFIED_SENDER}>`,
+    team: `Flowsstate Teams <${VERIFIED_SENDER}>`
   };
   return addresses[type];
 }
@@ -58,7 +58,7 @@ export async function sendEmail(emailData: EmailData): Promise<boolean> {
       fromAddress = `${displayName} <${VERIFIED_SENDER}>`;
     } else {
       // Use verified sender with default display name
-      fromAddress = `Productivity Hub <${VERIFIED_SENDER}>`;
+      fromAddress = `Flowsstate <${VERIFIED_SENDER}>`;
     }
     
     console.log('Attempting to send email via Resend:', {
@@ -80,7 +80,7 @@ export async function sendEmail(emailData: EmailData): Promise<boolean> {
       emailPayload.text = emailData.text;
     } else {
       // Fallback to a basic text message
-      emailPayload.text = 'This is a notification from Productivity Hub.';
+      emailPayload.text = 'This is a notification from Flowsstate.';
     }
 
     const result = await resend.emails.send(emailPayload);
