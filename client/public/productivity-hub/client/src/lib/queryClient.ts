@@ -80,7 +80,12 @@ export const getQueryFn: <T>(options: {
     }
 
     await throwIfResNotOk(res);
-    return await res.json();
+    const json = await res.json();
+    // Unwrap paginated responses so components receive plain arrays
+    if (json && typeof json === "object" && Array.isArray(json.data) && "pagination" in json) {
+      return json.data;
+    }
+    return json;
   };
 
 export const queryClient = new QueryClient({
