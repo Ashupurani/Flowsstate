@@ -30,7 +30,7 @@ function Router() {
         <Route path="/verify-email" component={VerifyEmail} />
 
         {isLoading || !isAuthenticated ? (
-          <Route path="/" component={Welcome} />
+          <Route component={Welcome} />
         ) : (
           <>
             <Route path="/" component={Today} />
