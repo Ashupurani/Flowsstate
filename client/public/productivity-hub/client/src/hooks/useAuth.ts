@@ -14,15 +14,6 @@ export function useAuth() {
     enabled: !!localStorage.getItem('auth_token'), // Only run query if token exists
   });
 
-  // Debug auth state
-  console.log('🔐 useAuth Debug:', { 
-    user, 
-    isLoading, 
-    error: error?.message,
-    hasToken: !!localStorage.getItem('auth_token'),
-    isAuthenticated: !!user 
-  });
-
   return {
     user,
     isLoading,

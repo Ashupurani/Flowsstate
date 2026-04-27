@@ -1,11 +1,21 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { storage } from './storage';
 import { sendEmail, getDisplayFromAddress } from './email';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-for-development';
-const FRONTEND_URL = process.env.FRONTEND_URL || (process.env.REPLIT_DEV_DOMAIN 
-  ? `https://${process.env.REPLIT_DEV_DOMAIN}` 
+// JWT_SECRET is required - no fallback to prevent security issues
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error(
+    'FATAL: JWT_SECRET environment variable is required. ' +
+    'Set JWT_SECRET before starting the server. ' +
+    'Generate a secure random value: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"'
+  );
+}
+
+const FRONTEND_URL = process.env.FRONTEND_URL || (process.env.REPLIT_DEV_DOMAIN
+  ? `https://${process.env.REPLIT_DEV_DOMAIN}`
   : 'http://localhost:5000');
 
 export interface AuthUser {
@@ -48,10 +58,9 @@ export function verifyToken(token: string): any {
   }
 }
 
-export async function sendVerificationEmail(email: string, name: string): Promise<boolean> {
+export async function sendVerificationEmail(email: string, name: string): Promise<{ token: string; success: boolean }> {
   const token = generateVerificationToken(email);
-  const verificationUrl = `${FRONTEND_URL}/verify-email?token=${token}`;
-  
+
   const emailContent = {
     to: email,
     from: getDisplayFromAddress('noreply'),
@@ -62,25 +71,37 @@ export async function sendVerificationEmail(email: string, name: string): Promis
           <h1 style="color: #3b82f6; margin: 0;">Productivity Hub</h1>
           <p style="color: #64748b; margin: 5px 0;">Your Personal Productivity Platform</p>
         </div>
-        
+
         <div style="background: linear-gradient(135deg, #3b82f6, #8b5cf6); padding: 30px; border-radius: 12px; text-align: center; margin-bottom: 30px;">
           <h2 style="color: white; margin: 0 0 15px 0;">Welcome to Productivity Hub, ${name}!</h2>
           <p style="color: #e0e7ff; margin: 0;">Thank you for joining our community of productivity enthusiasts.</p>
         </div>
-        
+
         <div style="background: #f8fafc; padding: 25px; border-radius: 8px; margin-bottom: 25px;">
           <h3 style="color: #1e293b; margin: 0 0 15px 0;">Verify Your Email Address</h3>
           <p style="color: #475569; margin: 0 0 20px 0;">
-            To get started with your productivity journey, please verify your email address by clicking the button below:
+            To get started with your productivity journey, please verify your email address:
           </p>
+
+          <div style="background: #e0f2fe; padding: 20px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #0284c7;">
+            <p style="color: #0c4a6e; margin: 0 0 10px 0; font-weight: bold;">Your Verification Code:</p>
+            <p style="color: #0284c7; margin: 0; font-size: 24px; letter-spacing: 2px; font-weight: bold; font-family: monospace; word-break: break-all;">
+              ${token.substring(0, 32)}...
+            </p>
+          </div>
+
+          <p style="color: #64748b; font-size: 13px; margin: 15px 0;">
+            Copy the code above and paste it in the verification page, or click the button below:
+          </p>
+
           <div style="text-align: center;">
-            <a href="${verificationUrl}" 
+            <a href="${FRONTEND_URL}/verify-email"
                style="display: inline-block; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; text-decoration: none; padding: 12px 30px; border-radius: 6px; font-weight: bold;">
-              Verify Email Address
+              Go to Verification Page
             </a>
           </div>
         </div>
-        
+
         <div style="background: #f1f5f9; padding: 20px; border-radius: 8px; margin-bottom: 25px;">
           <h4 style="color: #1e293b; margin: 0 0 10px 0;">What's Next?</h4>
           <ul style="color: #475569; margin: 0; padding-left: 20px;">
@@ -91,18 +112,19 @@ export async function sendVerificationEmail(email: string, name: string): Promis
             <li>Invite team members to collaborate</li>
           </ul>
         </div>
-        
+
         <div style="text-align: center; padding: 20px; color: #64748b; font-size: 14px;">
           <p>If you didn't create this account, please ignore this email.</p>
-          <p>This verification link will expire in 24 hours.</p>
+          <p>This verification code will expire in 24 hours.</p>
           <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;">
           <p>© 2025 Productivity Hub. Built for modern professionals.</p>
         </div>
       </div>
     `
   };
-  
-  return await sendEmail(emailContent);
+
+  const success = await sendEmail(emailContent);
+  return { token, success };
 }
 
 export async function sendWelcomeEmail(email: string, name: string): Promise<boolean> {

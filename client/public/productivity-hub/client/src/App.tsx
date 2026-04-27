@@ -5,6 +5,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { useAuth } from "@/hooks/useAuth";
 import { useDayChange } from "@/hooks/use-day-change";
 import Welcome from "@/pages/welcome";
@@ -20,16 +21,14 @@ import QuickAddDialog from "@/components/quick-add-dialog";
 
 function Router() {
   const { isAuthenticated, isLoading, user } = useAuth();
-  
+
   useDayChange();
-  
-  console.log('🔐 Auth Debug:', { isAuthenticated, isLoading, user, token: !!localStorage.getItem('auth_token') });
 
   return (
     <>
       <Switch>
         <Route path="/verify-email" component={VerifyEmail} />
-        
+
         {isLoading || !isAuthenticated ? (
           <Route path="/" component={Welcome} />
         ) : (
@@ -64,14 +63,16 @@ function App() {
   }, []);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider defaultTheme="light" storageKey="productivity-theme">
-        <TooltipProvider>
-          <Toaster />
-          <Router />
-        </TooltipProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider defaultTheme="light" storageKey="productivity-theme">
+          <TooltipProvider>
+            <Toaster />
+            <Router />
+          </TooltipProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 

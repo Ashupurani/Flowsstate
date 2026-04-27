@@ -1282,7 +1282,12 @@ For support, contact: support@productivityhub.com
       if (!targetMember || targetMember.role === 'owner') {
         return res.status(403).json({ message: "Cannot modify owner role" });
       }
-      
+
+      // SECURITY: Verify target member belongs to the same team
+      if (targetMember.teamId !== team.id) {
+        return res.status(403).json({ message: "Member does not belong to this team" });
+      }
+
       // Update the role
       const updatedMember = await storage.updateTeamMemberRole(memberId, role);
       res.json(updatedMember);

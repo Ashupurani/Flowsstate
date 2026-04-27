@@ -43,8 +43,8 @@ router.post('/register', [
     });
 
     // Try to send verification email, but auto-verify if it fails
-    const emailSent = await sendVerificationEmail(email, name);
-    if (!emailSent) {
+    const verificationResult = await sendVerificationEmail(email, name);
+    if (!verificationResult.success) {
       console.warn('Failed to send verification email to:', email);
       console.log('⚠️ Auto-verifying user due to email failure');
       // Auto-verify user when email service is unavailable

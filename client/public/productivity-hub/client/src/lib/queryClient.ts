@@ -13,13 +13,13 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
-export function apiRequest(url: string, options?: RequestInit): Promise<any>;
-export function apiRequest(method: string, url: string, data?: unknown): Promise<any>;
-export async function apiRequest(
+export async function apiRequest<T = any>(url: string, options?: RequestInit): Promise<T>;
+export async function apiRequest<T = any>(method: string, url: string, data?: unknown): Promise<T>;
+export async function apiRequest<T = any>(
   methodOrUrl: string,
-  urlOrOptions: string | RequestInit = {},
+  urlOrOptions?: string | RequestInit,
   data?: unknown,
-): Promise<any> {
+): Promise<T> {
   let url: string;
   let options: RequestInit;
 
@@ -32,7 +32,7 @@ export async function apiRequest(
     };
   } else {
     url = methodOrUrl;
-    options = urlOrOptions;
+    options = urlOrOptions || {};
   }
 
   const token = localStorage.getItem("auth_token");
@@ -41,20 +41,20 @@ export async function apiRequest(
     ...(hasFormDataBody ? {} : { "Content-Type": "application/json" }),
     ...((options.headers as Record<string, string>) || {}),
   };
-  
+
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
   const res = await fetch(url, {
-    method: "GET",
+    method: options.method || "GET",
     ...options,
     headers,
     credentials: "include",
   });
 
   await throwIfResNotOk(res);
-  return res.json();
+  return res.json() as Promise<T>;
 }
 
 type UnauthorizedBehavior = "returnNull" | "throw";
@@ -65,7 +65,7 @@ export const getQueryFn: <T>(options: {
   async ({ queryKey }) => {
     const token = localStorage.getItem("auth_token");
     const headers: Record<string, string> = {};
-    
+
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
     }

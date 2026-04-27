@@ -108,14 +108,15 @@ export default function AIInsights() {
           return acc;
         }, {} as Record<number, number>);
 
-        const peakHour = Object.entries(hourCounts).sort(([,a], [,b]) => b - a)[0];
-        if (peakHour) {
-          const peakTime = parseInt(peakHour[0]);
-          const timeString = peakTime === 0 ? '12 AM' : 
-                            peakTime < 12 ? `${peakTime} AM` : 
-                            peakTime === 12 ? '12 PM' : 
+        const peakHourEntry = Object.entries(hourCounts).sort(([,a], [,b]) => b - a)[0];
+        if (peakHourEntry) {
+          const peakTime = parseInt(peakHourEntry[0], 10);
+          const peakCount = peakHourEntry[1];
+          const timeString = peakTime === 0 ? '12 AM' :
+                            peakTime < 12 ? `${peakTime} AM` :
+                            peakTime === 12 ? '12 PM' :
                             `${peakTime - 12} PM`;
-          
+
           newInsights.push({
             id: 'peak-productivity',
             type: 'time_management',
@@ -124,7 +125,7 @@ export default function AIInsights() {
             confidence: 90,
             actionable: true,
             priority: 'high',
-            data: { peakHour: peakTime, sessionCount: Number(peakHour[1]) }
+            data: { peakHour: peakTime, sessionCount: peakCount }
           });
         }
       }

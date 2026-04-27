@@ -37,7 +37,7 @@ export default function Achievements() {
   const highPriorityCompleted = tasks.filter(t => t.status === 'completed' && t.priority === 'high').length;
   const totalHabits = habits.length;
   const completedHabitEntries = habitEntries.filter(entry => entry.completed).length;
-  const pomodoroCount = pomodoroSessions.length;
+  const pomodoroCount = (pomodoroSessions as PomodoroSession[]).length;
 
   // Calculate streaks
   const getHabitStreak = (habitId: number): number => {
