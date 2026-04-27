@@ -3,7 +3,9 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import authRoutes from "./authRoutes";
 import { authenticateToken, type AuthenticatedRequest } from "./middleware";
-import { insertTaskSchema, insertHabitSchema, insertHabitEntrySchema, insertPomodoroSessionSchema } from "@shared/schema";
+import { insertTaskSchema, insertHabitSchema, insertHabitEntrySchema, insertPomodoroSessionSchema, workspaceInviteLinks } from "@shared/schema";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import {
   ObjectStorageService,
@@ -1499,6 +1501,325 @@ For support, contact: support@productivityhub.com
       res.status(500).json({ error: "Internal server error" });
     }
   });
+
+  // ─── Workspace Routes ─────────────────────────────────────────────────────
+
+  const FRONTEND_URL_WS = process.env.FRONTEND_URL || "http://localhost:5000";
+  const crypto = await import("crypto");
+
+  const canManageWorkspace = (role: string) => ["owner", "admin"].includes(role);
+  const canEditWorkspace = (role: string) => ["owner", "admin", "editor"].includes(role);
+
+  async function assertWorkspaceMember(userId: number, workspaceId: number) {
+    const member = await storage.getWorkspaceMember(workspaceId, userId);
+    if (!member) throw Object.assign(new Error("Access denied"), { status: 403 });
+    return member;
+  }
+
+  // GET /api/workspaces — list user's workspaces
+  app.get("/api/workspaces", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const list = await storage.getWorkspacesByUser(req.user!.id);
+      res.json(list);
+    } catch (e) { res.status(500).json({ message: "Failed to fetch workspaces" }); }
+  });
+
+  // POST /api/workspaces — create workspace
+  app.post("/api/workspaces", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const { name, description, color, icon } = req.body;
+      if (!name?.trim()) return res.status(400).json({ message: "Name is required" });
+      const ws = await storage.createWorkspace({ name: name.trim(), description, color: color || "#6366f1", icon: icon || "folder", ownerId: userId, isArchived: false });
+      await storage.logWorkspaceActivity({ workspaceId: ws.id, userId, action: "workspace_created", metadata: { name: ws.name } });
+      res.json(ws);
+    } catch (e) { res.status(500).json({ message: "Failed to create workspace" }); }
+  });
+
+  // GET /api/workspaces/:id
+  app.get("/api/workspaces/:id", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const wsId = parseInt(req.params.id);
+      await assertWorkspaceMember(req.user!.id, wsId);
+      const ws = await storage.getWorkspace(wsId);
+      if (!ws) return res.status(404).json({ message: "Workspace not found" });
+      res.json(ws);
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // PUT /api/workspaces/:id
+  app.put("/api/workspaces/:id", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const wsId = parseInt(req.params.id);
+      const member = await assertWorkspaceMember(req.user!.id, wsId);
+      if (!canManageWorkspace(member.role)) return res.status(403).json({ message: "Insufficient permissions" });
+      const { name, description, color, icon } = req.body;
+      const ws = await storage.updateWorkspace(wsId, { name, description, color, icon });
+      await storage.logWorkspaceActivity({ workspaceId: wsId, userId: req.user!.id, action: "workspace_updated", metadata: { name: ws.name } });
+      res.json(ws);
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // DELETE /api/workspaces/:id
+  app.delete("/api/workspaces/:id", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const wsId = parseInt(req.params.id);
+      const ws = await storage.getWorkspace(wsId);
+      if (!ws || ws.ownerId !== req.user!.id) return res.status(403).json({ message: "Only the owner can delete a workspace" });
+      await storage.deleteWorkspace(wsId);
+      res.json({ message: "Workspace deleted" });
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // GET /api/workspaces/:id/members
+  app.get("/api/workspaces/:id/members", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const wsId = parseInt(req.params.id);
+      await assertWorkspaceMember(req.user!.id, wsId);
+      const members = await storage.getWorkspaceMembers(wsId);
+      const enriched = await Promise.all(members.map(async m => {
+        const user = await storage.getUserById(m.userId);
+        return { ...m, name: user?.name || "Unknown", email: user?.email || "" };
+      }));
+      res.json(enriched);
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // PUT /api/workspaces/:id/members/:userId/role
+  app.put("/api/workspaces/:id/members/:userId/role", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const wsId = parseInt(req.params.id); const targetId = parseInt(req.params.userId);
+      const member = await assertWorkspaceMember(req.user!.id, wsId);
+      if (!canManageWorkspace(member.role)) return res.status(403).json({ message: "Insufficient permissions" });
+      const { role } = req.body;
+      if (!["admin", "editor", "viewer"].includes(role)) return res.status(400).json({ message: "Invalid role" });
+      const updated = await storage.updateWorkspaceMemberRole(wsId, targetId, role);
+      await storage.logWorkspaceActivity({ workspaceId: wsId, userId: req.user!.id, action: "role_changed", targetUserId: targetId, metadata: { role } });
+      res.json(updated);
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // DELETE /api/workspaces/:id/members/:userId
+  app.delete("/api/workspaces/:id/members/:userId", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const wsId = parseInt(req.params.id); const targetId = parseInt(req.params.userId);
+      const member = await assertWorkspaceMember(req.user!.id, wsId);
+      if (req.user!.id !== targetId && !canManageWorkspace(member.role)) return res.status(403).json({ message: "Insufficient permissions" });
+      await storage.removeWorkspaceMember(wsId, targetId);
+      await storage.logWorkspaceActivity({ workspaceId: wsId, userId: req.user!.id, action: "member_removed", targetUserId: targetId });
+      res.json({ message: "Member removed" });
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // GET /api/workspaces/:id/invitations
+  app.get("/api/workspaces/:id/invitations", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const wsId = parseInt(req.params.id);
+      const member = await assertWorkspaceMember(req.user!.id, wsId);
+      if (!canManageWorkspace(member.role)) return res.status(403).json({ message: "Insufficient permissions" });
+      res.json(await storage.getWorkspaceInvitations(wsId));
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // POST /api/workspaces/:id/invitations
+  app.post("/api/workspaces/:id/invitations", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const wsId = parseInt(req.params.id);
+      const member = await assertWorkspaceMember(req.user!.id, wsId);
+      if (!canManageWorkspace(member.role)) return res.status(403).json({ message: "Insufficient permissions" });
+      const { email, role = "viewer" } = req.body;
+      if (!email?.includes("@")) return res.status(400).json({ message: "Valid email required" });
+      const ws = await storage.getWorkspace(wsId);
+      const inviter = await storage.getUserById(req.user!.id);
+      const token = crypto.randomBytes(32).toString("hex");
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const inv = await storage.createWorkspaceInvitation({ workspaceId: wsId, email, role, token, invitedBy: req.user!.id, status: "pending", expiresAt });
+      await storage.logWorkspaceActivity({ workspaceId: wsId, userId: req.user!.id, action: "member_invited", metadata: { email, role } });
+      // Send email
+      try {
+        await sendEmail({
+          to: email,
+          from: getDisplayFromAddress("team"),
+          subject: `${inviter?.name || "Someone"} invited you to ${ws?.name || "a workspace"} on Flowsstate`,
+          html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px">
+            <h1 style="color:#6366f1">Flowsstate Workspace Invitation</h1>
+            <p><strong>${inviter?.name}</strong> has invited you to join <strong>${ws?.name}</strong> as a <strong>${role}</strong>.</p>
+            <div style="text-align:center;margin:30px 0">
+              <a href="${FRONTEND_URL_WS}/join-workspace/${token}" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;padding:14px 36px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:16px">Accept Invitation</a>
+            </div>
+            <p style="color:#64748b;font-size:13px">This invitation expires in 7 days. If you didn't expect this, you can ignore it.</p>
+          </div>`
+        });
+      } catch (_) {}
+      res.json(inv);
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // DELETE /api/workspaces/:id/invitations/:invId
+  app.delete("/api/workspaces/:id/invitations/:invId", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const wsId = parseInt(req.params.id);
+      const member = await assertWorkspaceMember(req.user!.id, wsId);
+      if (!canManageWorkspace(member.role)) return res.status(403).json({ message: "Insufficient permissions" });
+      await storage.deleteWorkspaceInvitation(parseInt(req.params.invId));
+      res.json({ message: "Invitation cancelled" });
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // GET /api/my-workspace-invitations
+  app.get("/api/my-workspace-invitations", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const invitations = await storage.getWorkspaceInvitationsByEmail(req.user!.email);
+      const enriched = await Promise.all(invitations.map(async inv => {
+        const ws = await storage.getWorkspace(inv.workspaceId);
+        const inviter = await storage.getUserById(inv.invitedBy);
+        return { ...inv, workspaceName: ws?.name || "a workspace", workspaceColor: ws?.color || "#6366f1", inviterName: inviter?.name || "Someone" };
+      }));
+      res.json(enriched);
+    } catch (e) { res.status(500).json({ message: "Failed" }); }
+  });
+
+  // POST /api/workspace-invitations/:token/accept
+  app.post("/api/workspace-invitations/:token/accept", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const inv = await storage.getWorkspaceInvitationByToken(req.params.token);
+      if (!inv) return res.status(404).json({ message: "Invitation not found" });
+      if (inv.status !== "pending") return res.status(400).json({ message: "Invitation already used" });
+      if (new Date() > new Date(inv.expiresAt)) return res.status(400).json({ message: "Invitation expired" });
+      if (inv.email.toLowerCase() !== req.user!.email.toLowerCase()) return res.status(403).json({ message: "Email mismatch" });
+      const existing = await storage.getWorkspaceMember(inv.workspaceId, req.user!.id);
+      if (!existing) {
+        await storage.addWorkspaceMember({ workspaceId: inv.workspaceId, userId: req.user!.id, role: inv.role });
+        await storage.logWorkspaceActivity({ workspaceId: inv.workspaceId, userId: req.user!.id, action: "member_joined", metadata: { via: "email_invite" } });
+      }
+      await storage.updateWorkspaceInvitationStatus(inv.id, "accepted");
+      res.json({ message: "Joined workspace", workspaceId: inv.workspaceId });
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // POST /api/workspaces/:id/invite-links
+  app.post("/api/workspaces/:id/invite-links", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const wsId = parseInt(req.params.id);
+      const member = await assertWorkspaceMember(req.user!.id, wsId);
+      if (!canManageWorkspace(member.role)) return res.status(403).json({ message: "Insufficient permissions" });
+      const { role = "viewer", expiresInDays, maxUses } = req.body;
+      const token = crypto.randomBytes(32).toString("hex");
+      const expiresAt = expiresInDays ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000) : undefined;
+      const link = await storage.createWorkspaceInviteLink({ workspaceId: wsId, token, role, createdBy: req.user!.id, expiresAt, maxUses: maxUses || null, isActive: true });
+      await storage.logWorkspaceActivity({ workspaceId: wsId, userId: req.user!.id, action: "invite_link_created", metadata: { role } });
+      res.json({ ...link, url: `${FRONTEND_URL_WS}/join-workspace/${token}` });
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // GET /api/workspaces/:id/invite-links
+  app.get("/api/workspaces/:id/invite-links", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const wsId = parseInt(req.params.id);
+      const member = await assertWorkspaceMember(req.user!.id, wsId);
+      if (!canManageWorkspace(member.role)) return res.status(403).json({ message: "Insufficient permissions" });
+      const links = await storage.getWorkspaceInviteLinks(wsId);
+      res.json(links.map(l => ({ ...l, url: `${FRONTEND_URL_WS}/join-workspace/${l.token}` })));
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // DELETE /api/workspaces/:id/invite-links/:linkId
+  app.delete("/api/workspaces/:id/invite-links/:linkId", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const wsId = parseInt(req.params.id);
+      const member = await assertWorkspaceMember(req.user!.id, wsId);
+      if (!canManageWorkspace(member.role)) return res.status(403).json({ message: "Insufficient permissions" });
+      await storage.deactivateInviteLink(parseInt(req.params.linkId));
+      res.json({ message: "Link deactivated" });
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // POST /api/workspace-join/:token — join via invite link
+  app.post("/api/workspace-join/:token", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const link = await storage.getWorkspaceInviteLinkByToken(req.params.token);
+      if (!link || !link.isActive) return res.status(404).json({ message: "Invite link not found or inactive" });
+      if (link.expiresAt && new Date() > new Date(link.expiresAt)) return res.status(400).json({ message: "Invite link expired" });
+      if (link.maxUses && link.useCount >= link.maxUses) return res.status(400).json({ message: "Invite link has reached max uses" });
+      const existing = await storage.getWorkspaceMember(link.workspaceId, req.user!.id);
+      if (!existing) {
+        await storage.addWorkspaceMember({ workspaceId: link.workspaceId, userId: req.user!.id, role: link.role });
+        await storage.logWorkspaceActivity({ workspaceId: link.workspaceId, userId: req.user!.id, action: "member_joined", metadata: { via: "invite_link" } });
+        await db.update(workspaceInviteLinks).set({ useCount: link.useCount + 1 }).where(eq(workspaceInviteLinks.id, link.id));
+      }
+      res.json({ message: "Joined workspace", workspaceId: link.workspaceId });
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // GET /api/workspaces/:id/content
+  app.get("/api/workspaces/:id/content", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const wsId = parseInt(req.params.id);
+      await assertWorkspaceMember(req.user!.id, wsId);
+      const content = await storage.getWorkspaceContent(wsId);
+      const enriched = await Promise.all(content.map(async c => {
+        const author = await storage.getUserById(c.authorId);
+        return { ...c, authorName: author?.name || "Unknown" };
+      }));
+      res.json(enriched);
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // POST /api/workspaces/:id/content
+  app.post("/api/workspaces/:id/content", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const wsId = parseInt(req.params.id);
+      const member = await assertWorkspaceMember(req.user!.id, wsId);
+      if (!canEditWorkspace(member.role)) return res.status(403).json({ message: "Insufficient permissions" });
+      const { title, body = "", type = "note" } = req.body;
+      if (!title?.trim()) return res.status(400).json({ message: "Title required" });
+      const content = await storage.createWorkspaceContent({ workspaceId: wsId, authorId: req.user!.id, title: title.trim(), body, type, isPinned: false });
+      await storage.logWorkspaceActivity({ workspaceId: wsId, userId: req.user!.id, action: "content_created", metadata: { title: content.title, type } });
+      res.json(content);
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // PUT /api/workspaces/:id/content/:contentId
+  app.put("/api/workspaces/:id/content/:contentId", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const wsId = parseInt(req.params.id);
+      const member = await assertWorkspaceMember(req.user!.id, wsId);
+      if (!canEditWorkspace(member.role)) return res.status(403).json({ message: "Insufficient permissions" });
+      const { title, body, isPinned } = req.body;
+      const updated = await storage.updateWorkspaceContent(parseInt(req.params.contentId), wsId, { title, body, isPinned });
+      await storage.logWorkspaceActivity({ workspaceId: wsId, userId: req.user!.id, action: "content_updated", metadata: { title: updated.title } });
+      res.json(updated);
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // DELETE /api/workspaces/:id/content/:contentId
+  app.delete("/api/workspaces/:id/content/:contentId", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const wsId = parseInt(req.params.id);
+      const member = await assertWorkspaceMember(req.user!.id, wsId);
+      if (!canEditWorkspace(member.role)) return res.status(403).json({ message: "Insufficient permissions" });
+      await storage.deleteWorkspaceContent(parseInt(req.params.contentId), wsId);
+      await storage.logWorkspaceActivity({ workspaceId: wsId, userId: req.user!.id, action: "content_deleted" });
+      res.json({ message: "Deleted" });
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // GET /api/workspaces/:id/activity
+  app.get("/api/workspaces/:id/activity", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const wsId = parseInt(req.params.id);
+      await assertWorkspaceMember(req.user!.id, wsId);
+      const activity = await storage.getWorkspaceActivity(wsId, 100);
+      const enriched = await Promise.all(activity.map(async a => {
+        const actor = a.userId ? await storage.getUserById(a.userId) : null;
+        const target = a.targetUserId ? await storage.getUserById(a.targetUserId) : null;
+        return { ...a, actorName: actor?.name || "System", targetName: target?.name };
+      }));
+      res.json(enriched);
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
 
   const httpServer = createServer(app);
   return httpServer;

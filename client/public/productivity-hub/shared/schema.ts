@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, jsonb, timestamp, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, jsonb, timestamp, varchar, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -107,6 +107,100 @@ export const teamInvitations = pgTable("team_invitations", {
   sentAt: timestamp("sent_at").defaultNow().notNull(),
   expiresAt: timestamp("expires_at").notNull(),
 });
+
+// ─── Collaborative Workspace Tables ───────────────────────────────────────────
+
+export const workspaces = pgTable("workspaces", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  color: text("color").notNull().default("#6366f1"),
+  icon: text("icon").notNull().default("folder"),
+  ownerId: integer("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  isArchived: boolean("is_archived").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const workspaceMembers = pgTable("workspace_members", {
+  id: serial("id").primaryKey(),
+  workspaceId: integer("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: text("role").notNull().default("viewer"), // owner | admin | editor | viewer
+  joinedAt: timestamp("joined_at").defaultNow().notNull(),
+  lastActive: timestamp("last_active").defaultNow().notNull(),
+});
+
+export const workspaceInvitations = pgTable("workspace_invitations", {
+  id: serial("id").primaryKey(),
+  workspaceId: integer("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  role: text("role").notNull().default("viewer"),
+  token: text("token").notNull().unique(),
+  invitedBy: integer("invited_by").notNull().references(() => users.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("pending"), // pending | accepted | declined | expired
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const workspaceInviteLinks = pgTable("workspace_invite_links", {
+  id: serial("id").primaryKey(),
+  workspaceId: integer("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  token: text("token").notNull().unique(),
+  role: text("role").notNull().default("viewer"),
+  createdBy: integer("created_by").notNull().references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at"),
+  maxUses: integer("max_uses"),
+  useCount: integer("use_count").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const workspaceContent = pgTable("workspace_content", {
+  id: serial("id").primaryKey(),
+  workspaceId: integer("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  authorId: integer("author_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  body: text("body").notNull().default(""),
+  type: text("type").notNull().default("note"), // note | document | link
+  isPinned: boolean("is_pinned").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const workspaceActivity = pgTable("workspace_activity", {
+  id: serial("id").primaryKey(),
+  workspaceId: integer("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+  action: text("action").notNull(),
+  targetUserId: integer("target_user_id").references(() => users.id, { onDelete: "set null" }),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Workspace insert schemas
+export const insertWorkspaceSchema = createInsertSchema(workspaces).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertWorkspaceMemberSchema = createInsertSchema(workspaceMembers).omit({ id: true, joinedAt: true, lastActive: true });
+export const insertWorkspaceInvitationSchema = createInsertSchema(workspaceInvitations).omit({ id: true, createdAt: true });
+export const insertWorkspaceInviteLinkSchema = createInsertSchema(workspaceInviteLinks).omit({ id: true, createdAt: true, useCount: true });
+export const insertWorkspaceContentSchema = createInsertSchema(workspaceContent).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertWorkspaceActivitySchema = createInsertSchema(workspaceActivity).omit({ id: true, createdAt: true });
+
+// Workspace types
+export type Workspace = typeof workspaces.$inferSelect;
+export type InsertWorkspace = z.infer<typeof insertWorkspaceSchema>;
+export type WorkspaceMember = typeof workspaceMembers.$inferSelect;
+export type InsertWorkspaceMember = z.infer<typeof insertWorkspaceMemberSchema>;
+export type WorkspaceInvitation = typeof workspaceInvitations.$inferSelect;
+export type InsertWorkspaceInvitation = z.infer<typeof insertWorkspaceInvitationSchema>;
+export type WorkspaceInviteLink = typeof workspaceInviteLinks.$inferSelect;
+export type InsertWorkspaceInviteLink = z.infer<typeof insertWorkspaceInviteLinkSchema>;
+export type WorkspaceContent = typeof workspaceContent.$inferSelect;
+export type InsertWorkspaceContent = z.infer<typeof insertWorkspaceContentSchema>;
+export type WorkspaceActivity = typeof workspaceActivity.$inferSelect;
+export type InsertWorkspaceActivity = z.infer<typeof insertWorkspaceActivitySchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const insertTaskSchema = createInsertSchema(tasks).omit({
   id: true,

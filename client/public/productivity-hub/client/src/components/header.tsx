@@ -1,4 +1,4 @@
-import { LayoutList, CalendarDays, BarChart3, Target, Home, LogOut, ChevronLeft, ChevronRight, Zap, Sun } from "lucide-react";
+import { LayoutList, CalendarDays, BarChart3, Target, Home, LogOut, ChevronLeft, ChevronRight, Zap, Sun, Folder } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/components/theme-provider";
 import { useLayoutStore } from "@/lib/store";
@@ -145,15 +145,27 @@ export default function Header() {
                 </button>
               </Link>
               <Link href="/goals">
-                <button 
+                <button
                   className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                    location === "/goals" 
-                      ? "bg-white dark:bg-slate-800 text-foreground shadow-sm" 
+                    location === "/goals"
+                      ? "bg-white dark:bg-slate-800 text-foreground shadow-sm"
                       : "text-muted-foreground hover:text-foreground hover:bg-white/50 dark:hover:bg-slate-800/50"
                   }`}
                 >
                   <Target size={16} />
                   <span>Goals</span>
+                </button>
+              </Link>
+              <Link href="/workspace">
+                <button
+                  className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                    location === "/workspace"
+                      ? "bg-white dark:bg-slate-800 text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground hover:bg-white/50 dark:hover:bg-slate-800/50"
+                  }`}
+                >
+                  <Folder size={16} />
+                  <span>Workspaces</span>
                 </button>
               </Link>
             </nav>

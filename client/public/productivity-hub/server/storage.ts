@@ -1,6 +1,7 @@
-import { 
+import {
   tasks, habits, habitEntries, pomodoroSessions, users, teams, teamMembers, teamInvitations,
   goals, focusBlocks, focusInterruptions,
+  workspaces, workspaceMembers, workspaceInvitations, workspaceInviteLinks, workspaceContent, workspaceActivity,
   type Task, type InsertTask,
   type Habit, type InsertHabit,
   type HabitEntry, type InsertHabitEntry,
@@ -11,7 +12,13 @@ import {
   type Team, type InsertTeam,
   type TeamMember, type InsertTeamMember,
   type TeamInvitation, type InsertTeamInvitation,
-  type Goal, type InsertGoal
+  type Goal, type InsertGoal,
+  type Workspace, type InsertWorkspace,
+  type WorkspaceMember, type InsertWorkspaceMember,
+  type WorkspaceInvitation, type InsertWorkspaceInvitation,
+  type WorkspaceInviteLink, type InsertWorkspaceInviteLink,
+  type WorkspaceContent, type InsertWorkspaceContent,
+  type WorkspaceActivity, type InsertWorkspaceActivity,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, ne, lt, gte, lte, or, desc } from "drizzle-orm";
@@ -91,6 +98,36 @@ export interface IStorage {
   getTeamMemberById(id: number): Promise<TeamMember | undefined>;
   updateTeamMemberRole(memberId: number, role: string): Promise<TeamMember>;
   getTeamMemberByUserAndTeam(userId: number, teamId: number): Promise<TeamMember | undefined>;
+
+  // Workspaces
+  getWorkspacesByUser(userId: number): Promise<Array<Workspace & { myRole: string }>>;
+  getWorkspace(id: number): Promise<Workspace | undefined>;
+  createWorkspace(ws: InsertWorkspace): Promise<Workspace>;
+  updateWorkspace(id: number, updates: Partial<InsertWorkspace>): Promise<Workspace>;
+  deleteWorkspace(id: number): Promise<boolean>;
+  getWorkspaceMember(workspaceId: number, userId: number): Promise<WorkspaceMember | undefined>;
+  getWorkspaceMembers(workspaceId: number): Promise<WorkspaceMember[]>;
+  addWorkspaceMember(member: InsertWorkspaceMember): Promise<WorkspaceMember>;
+  updateWorkspaceMemberRole(workspaceId: number, userId: number, role: string): Promise<WorkspaceMember>;
+  removeWorkspaceMember(workspaceId: number, userId: number): Promise<boolean>;
+  getWorkspaceInvitations(workspaceId: number): Promise<WorkspaceInvitation[]>;
+  getWorkspaceInvitationByToken(token: string): Promise<WorkspaceInvitation | undefined>;
+  getWorkspaceInvitationsByEmail(email: string): Promise<WorkspaceInvitation[]>;
+  createWorkspaceInvitation(inv: InsertWorkspaceInvitation): Promise<WorkspaceInvitation>;
+  updateWorkspaceInvitationStatus(id: number, status: string): Promise<WorkspaceInvitation>;
+  deleteWorkspaceInvitation(id: number): Promise<boolean>;
+  getWorkspaceInviteLinks(workspaceId: number): Promise<WorkspaceInviteLink[]>;
+  getWorkspaceInviteLinkByToken(token: string): Promise<WorkspaceInviteLink | undefined>;
+  createWorkspaceInviteLink(link: InsertWorkspaceInviteLink): Promise<WorkspaceInviteLink>;
+  incrementInviteLinkUseCount(id: number): Promise<void>;
+  deactivateInviteLink(id: number): Promise<void>;
+  getWorkspaceContent(workspaceId: number): Promise<WorkspaceContent[]>;
+  getWorkspaceContentItem(id: number, workspaceId: number): Promise<WorkspaceContent | undefined>;
+  createWorkspaceContent(content: InsertWorkspaceContent): Promise<WorkspaceContent>;
+  updateWorkspaceContent(id: number, workspaceId: number, updates: Partial<InsertWorkspaceContent>): Promise<WorkspaceContent>;
+  deleteWorkspaceContent(id: number, workspaceId: number): Promise<boolean>;
+  getWorkspaceActivity(workspaceId: number, limit?: number): Promise<WorkspaceActivity[]>;
+  logWorkspaceActivity(entry: InsertWorkspaceActivity): Promise<WorkspaceActivity>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -885,8 +922,145 @@ export class DatabaseStorage implements IStorage {
     const result = await db.select()
       .from(teamMembers)
       .where(and(eq(teamMembers.userId, userId), eq(teamMembers.teamId, teamId)));
-    
     return result[0];
+  }
+
+  // ─── Workspace Methods ────────────────────────────────────────────────────
+
+  async getWorkspacesByUser(userId: number): Promise<Array<Workspace & { myRole: string }>> {
+    const rows = await db.select({ workspace: workspaces, role: workspaceMembers.role })
+      .from(workspaceMembers)
+      .innerJoin(workspaces, eq(workspaceMembers.workspaceId, workspaces.id))
+      .where(and(eq(workspaceMembers.userId, userId), eq(workspaces.isArchived, false)));
+    return rows.map(r => ({ ...r.workspace, myRole: r.role }));
+  }
+
+  async getWorkspace(id: number): Promise<Workspace | undefined> {
+    const [ws] = await db.select().from(workspaces).where(eq(workspaces.id, id));
+    return ws;
+  }
+
+  async createWorkspace(ws: InsertWorkspace): Promise<Workspace> {
+    const [created] = await db.insert(workspaces).values(ws).returning();
+    await db.insert(workspaceMembers).values({ workspaceId: created.id, userId: ws.ownerId, role: "owner" });
+    return created;
+  }
+
+  async updateWorkspace(id: number, updates: Partial<InsertWorkspace>): Promise<Workspace> {
+    const [updated] = await db.update(workspaces).set({ ...updates, updatedAt: new Date() }).where(eq(workspaces.id, id)).returning();
+    return updated;
+  }
+
+  async deleteWorkspace(id: number): Promise<boolean> {
+    const result = await db.delete(workspaces).where(eq(workspaces.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getWorkspaceMember(workspaceId: number, userId: number): Promise<WorkspaceMember | undefined> {
+    const [m] = await db.select().from(workspaceMembers).where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId)));
+    return m;
+  }
+
+  async getWorkspaceMembers(workspaceId: number): Promise<WorkspaceMember[]> {
+    return await db.select().from(workspaceMembers).where(eq(workspaceMembers.workspaceId, workspaceId));
+  }
+
+  async addWorkspaceMember(member: InsertWorkspaceMember): Promise<WorkspaceMember> {
+    const [m] = await db.insert(workspaceMembers).values(member).returning();
+    return m;
+  }
+
+  async updateWorkspaceMemberRole(workspaceId: number, userId: number, role: string): Promise<WorkspaceMember> {
+    const [m] = await db.update(workspaceMembers).set({ role }).where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId))).returning();
+    return m;
+  }
+
+  async removeWorkspaceMember(workspaceId: number, userId: number): Promise<boolean> {
+    const result = await db.delete(workspaceMembers).where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId))).returning();
+    return result.length > 0;
+  }
+
+  async getWorkspaceInvitations(workspaceId: number): Promise<WorkspaceInvitation[]> {
+    return await db.select().from(workspaceInvitations).where(and(eq(workspaceInvitations.workspaceId, workspaceId), eq(workspaceInvitations.status, "pending")));
+  }
+
+  async getWorkspaceInvitationByToken(token: string): Promise<WorkspaceInvitation | undefined> {
+    const [inv] = await db.select().from(workspaceInvitations).where(eq(workspaceInvitations.token, token));
+    return inv;
+  }
+
+  async getWorkspaceInvitationsByEmail(email: string): Promise<WorkspaceInvitation[]> {
+    return await db.select().from(workspaceInvitations).where(and(eq(workspaceInvitations.email, email), eq(workspaceInvitations.status, "pending")));
+  }
+
+  async createWorkspaceInvitation(inv: InsertWorkspaceInvitation): Promise<WorkspaceInvitation> {
+    const [created] = await db.insert(workspaceInvitations).values(inv).returning();
+    return created;
+  }
+
+  async updateWorkspaceInvitationStatus(id: number, status: string): Promise<WorkspaceInvitation> {
+    const [updated] = await db.update(workspaceInvitations).set({ status }).where(eq(workspaceInvitations.id, id)).returning();
+    return updated;
+  }
+
+  async deleteWorkspaceInvitation(id: number): Promise<boolean> {
+    const result = await db.delete(workspaceInvitations).where(eq(workspaceInvitations.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getWorkspaceInviteLinks(workspaceId: number): Promise<WorkspaceInviteLink[]> {
+    return await db.select().from(workspaceInviteLinks).where(and(eq(workspaceInviteLinks.workspaceId, workspaceId), eq(workspaceInviteLinks.isActive, true)));
+  }
+
+  async getWorkspaceInviteLinkByToken(token: string): Promise<WorkspaceInviteLink | undefined> {
+    const [link] = await db.select().from(workspaceInviteLinks).where(eq(workspaceInviteLinks.token, token));
+    return link;
+  }
+
+  async createWorkspaceInviteLink(link: InsertWorkspaceInviteLink): Promise<WorkspaceInviteLink> {
+    const [created] = await db.insert(workspaceInviteLinks).values(link).returning();
+    return created;
+  }
+
+  async incrementInviteLinkUseCount(id: number): Promise<void> {
+    await db.update(workspaceInviteLinks).set({ useCount: db.$count(workspaceInviteLinks, eq(workspaceInviteLinks.id, id)) }).where(eq(workspaceInviteLinks.id, id));
+  }
+
+  async deactivateInviteLink(id: number): Promise<void> {
+    await db.update(workspaceInviteLinks).set({ isActive: false }).where(eq(workspaceInviteLinks.id, id));
+  }
+
+  async getWorkspaceContent(workspaceId: number): Promise<WorkspaceContent[]> {
+    return await db.select().from(workspaceContent).where(eq(workspaceContent.workspaceId, workspaceId)).orderBy(desc(workspaceContent.isPinned), desc(workspaceContent.updatedAt));
+  }
+
+  async getWorkspaceContentItem(id: number, workspaceId: number): Promise<WorkspaceContent | undefined> {
+    const [item] = await db.select().from(workspaceContent).where(and(eq(workspaceContent.id, id), eq(workspaceContent.workspaceId, workspaceId)));
+    return item;
+  }
+
+  async createWorkspaceContent(content: InsertWorkspaceContent): Promise<WorkspaceContent> {
+    const [created] = await db.insert(workspaceContent).values(content).returning();
+    return created;
+  }
+
+  async updateWorkspaceContent(id: number, workspaceId: number, updates: Partial<InsertWorkspaceContent>): Promise<WorkspaceContent> {
+    const [updated] = await db.update(workspaceContent).set({ ...updates, updatedAt: new Date() }).where(and(eq(workspaceContent.id, id), eq(workspaceContent.workspaceId, workspaceId))).returning();
+    return updated;
+  }
+
+  async deleteWorkspaceContent(id: number, workspaceId: number): Promise<boolean> {
+    const result = await db.delete(workspaceContent).where(and(eq(workspaceContent.id, id), eq(workspaceContent.workspaceId, workspaceId))).returning();
+    return result.length > 0;
+  }
+
+  async getWorkspaceActivity(workspaceId: number, limit = 50): Promise<WorkspaceActivity[]> {
+    return await db.select().from(workspaceActivity).where(eq(workspaceActivity.workspaceId, workspaceId)).orderBy(desc(workspaceActivity.createdAt)).limit(limit);
+  }
+
+  async logWorkspaceActivity(entry: InsertWorkspaceActivity): Promise<WorkspaceActivity> {
+    const [created] = await db.insert(workspaceActivity).values(entry).returning();
+    return created;
   }
 }
 

@@ -18,6 +18,8 @@ import Goals from "@/pages/goals";
 import Admin from "@/pages/admin";
 import NotFound from "@/pages/not-found";
 import AcceptInvite from "@/pages/accept-invite";
+import WorkspacePage from "@/pages/workspace";
+import JoinWorkspace from "@/pages/join-workspace";
 import QuickAddDialog from "@/components/quick-add-dialog";
 
 function Router() {
@@ -30,6 +32,7 @@ function Router() {
       <Switch>
         <Route path="/verify-email" component={VerifyEmail} />
         <Route path="/accept-invite" component={AcceptInvite} />
+        <Route path="/join-workspace/:token" component={JoinWorkspace} />
 
         {isLoading || !isAuthenticated ? (
           <Route component={Welcome} />
@@ -40,6 +43,7 @@ function Router() {
             <Route path="/suggestions" component={SuggestionsPage} />
             <Route path="/analytics" component={Analytics} />
             <Route path="/goals" component={Goals} />
+            <Route path="/workspace" component={WorkspacePage} />
             <Route path="/admin" component={Admin} />
           </>
         )}
