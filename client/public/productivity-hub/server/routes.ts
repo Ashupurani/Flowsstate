@@ -523,26 +523,20 @@ For support, contact: support@productivityhub.com
   app.post("/api/tasks", authenticateToken, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      console.log('Task creation request body:', req.body);
-      console.log('User ID:', userId);
-      
+
       // Ensure userId is properly included in the task data
       const taskData = {
         ...req.body,
         userId: userId
       };
-      console.log('Task data with userId:', taskData);
-      
+
       const task = insertTaskSchema.parse(taskData);
-      console.log('Parsed task data:', task);
-      
+
       const createdTask = await storage.createTask(task);
-      console.log('Created task:', createdTask);
       res.json(createdTask);
     } catch (error: any) {
       console.error('Task creation error:', error);
       if (error instanceof z.ZodError) {
-        console.error('Validation errors:', error.errors);
         res.status(400).json({ message: "Invalid task data", errors: error.errors });
       } else {
         res.status(500).json({ message: "Failed to create task", error: error?.message || 'Unknown error' });

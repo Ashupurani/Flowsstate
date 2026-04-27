@@ -351,12 +351,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async startFocusBlock(userId: number, plannedDurationMin: number): Promise<FocusBlockWithInterruptions> {
-    const activeBlock = await this.getActiveFocusBlock(userId);
-    if (activeBlock) {
-      throw new Error("A focus block is already active");
-    }
-
     try {
+      // Attempt to create focus block - will fail with unique constraint if one already exists
       const [block] = await db.insert(focusBlocks).values({
         userId,
         plannedDurationMin,
@@ -364,8 +360,19 @@ export class DatabaseStorage implements IStorage {
       }).returning();
 
       return this.toFocusBlockWithInterruptions(block, []);
-    } catch (error) {
+    } catch (error: any) {
+      // Handle unique constraint violation (already have active focus block)
+      if (error.code === '23505' || error.message?.includes('unique')) {
+        throw new Error("A focus block is already active for this user");
+      }
+
       if (!this.isMissingFocusTableError(error)) throw error;
+
+      // Fallback for in-memory storage
+      const activeBlock = this.getFallbackUserBlocks(userId).find(b => b.status === 'active');
+      if (activeBlock) {
+        throw new Error("A focus block is already active");
+      }
 
       const now = new Date();
       const fallbackBlock: FocusBlock = {
