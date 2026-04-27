@@ -83,23 +83,17 @@ export async function sendVerificationEmail(email: string, name: string): Promis
             To get started with your productivity journey, please verify your email address:
           </p>
 
-          <div style="background: #e0f2fe; padding: 20px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #0284c7;">
-            <p style="color: #0c4a6e; margin: 0 0 10px 0; font-weight: bold;">Your Verification Code:</p>
-            <p style="color: #0284c7; margin: 0; font-size: 24px; letter-spacing: 2px; font-weight: bold; font-family: monospace; word-break: break-all;">
-              ${token.substring(0, 32)}...
-            </p>
-          </div>
-
-          <p style="color: #64748b; font-size: 13px; margin: 15px 0;">
-            Copy the code above and paste it in the verification page, or click the button below:
-          </p>
-
-          <div style="text-align: center;">
-            <a href="${FRONTEND_URL}/verify-email"
-               style="display: inline-block; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; text-decoration: none; padding: 12px 30px; border-radius: 6px; font-weight: bold;">
-              Go to Verification Page
+          <div style="text-align: center; margin: 20px 0;">
+            <a href="${FRONTEND_URL}/verify-email?token=${encodeURIComponent(token)}"
+               style="display: inline-block; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; text-decoration: none; padding: 14px 36px; border-radius: 6px; font-weight: bold; font-size: 16px;">
+              Verify My Email
             </a>
           </div>
+
+          <p style="color: #64748b; font-size: 13px; margin: 15px 0; text-align: center;">
+            Button not working? Copy and paste this link into your browser:<br/>
+            <span style="color: #0284c7; word-break: break-all;">${FRONTEND_URL}/verify-email?token=${encodeURIComponent(token)}</span>
+          </p>
         </div>
 
         <div style="background: #f1f5f9; padding: 20px; border-radius: 8px; margin-bottom: 25px;">

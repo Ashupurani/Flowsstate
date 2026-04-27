@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Loader2, Mail, Lock, User, CheckCircle } from "lucide-react";
+import { Loader2, Mail, Lock, User } from "lucide-react";
 
 interface AuthFormData {
   email: string;
@@ -87,8 +87,14 @@ export function AuthForms() {
             title: "Welcome back!",
             description: "You've been logged in successfully.",
           });
-          // Force page refresh to reload auth state
-          setTimeout(() => window.location.reload(), 500);
+          // Redirect to pending invite if one was saved before login
+          const pendingInvite = sessionStorage.getItem("pendingInviteUrl");
+          if (pendingInvite) {
+            sessionStorage.removeItem("pendingInviteUrl");
+            setTimeout(() => { window.location.href = pendingInvite; }, 500);
+          } else {
+            setTimeout(() => window.location.reload(), 500);
+          }
         } else {
           // Check if user is already verified (auto-verified in development)
           if (data.user?.isVerified) {
@@ -193,50 +199,30 @@ export function AuthForms() {
             <Mail className="w-8 h-8 text-blue-600 dark:text-blue-400" />
           </div>
           <CardTitle className="text-2xl font-bold text-gray-900 dark:text-white">
-            Verify Your Email
+            Check Your Email
           </CardTitle>
           <CardDescription className="text-gray-600 dark:text-gray-300">
-            We've sent a verification code to {formData.email}
+            We've sent a verification link to <strong>{formData.email}</strong>
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleVerification} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="verification-token">Verification Code</Label>
-              <Input
-                id="verification-token"
-                placeholder="Enter verification code"
-                value={verificationToken}
-                onChange={(e) => setVerificationToken(e.target.value)}
-                className="text-center text-lg tracking-widest"
-              />
-            </div>
-            <Button 
-              type="submit" 
-              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-              disabled={verifyMutation.isPending}
-            >
-              {verifyMutation.isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Verifying...
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  Verify Email
-                </>
-              )}
-            </Button>
-            <Button 
-              type="button" 
-              variant="ghost" 
-              className="w-full"
-              onClick={() => setVerificationMode(false)}
-            >
-              Back to Login
-            </Button>
-          </form>
+        <CardContent className="space-y-4">
+          <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg text-sm text-blue-800 dark:text-blue-200 space-y-1">
+            <p className="font-medium">Next steps:</p>
+            <p>1. Open the email from Flowsstate</p>
+            <p>2. Click the <strong>"Verify My Email"</strong> button</p>
+            <p>3. You'll be logged in automatically</p>
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+            The link expires in 24 hours. Check your spam folder if you don't see it.
+          </p>
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full"
+            onClick={() => setVerificationMode(false)}
+          >
+            Back to Login
+          </Button>
         </CardContent>
       </Card>
     );

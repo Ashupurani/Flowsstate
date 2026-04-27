@@ -74,6 +74,7 @@ export interface IStorage {
   verifyUser(email: string): Promise<User>;
 
   // Team Collaboration
+  getTeamById(id: number): Promise<Team | undefined>;
   getTeamByUserId(userId: number): Promise<Team | undefined>;
   createTeam(team: InsertTeam): Promise<Team>;
   getTeamMembers(teamId: number): Promise<TeamMember[]>;
@@ -86,6 +87,7 @@ export interface IStorage {
   updateTeamInvitationStatus(id: number, status: string): Promise<TeamInvitation>;
   getTeamInvitationById(id: number): Promise<TeamInvitation | undefined>;
   deleteTeamInvitation(id: number): Promise<boolean>;
+  getInvitationsByEmail(email: string): Promise<TeamInvitation[]>;
   getTeamMemberById(id: number): Promise<TeamMember | undefined>;
   updateTeamMemberRole(memberId: number, role: string): Promise<TeamMember>;
   getTeamMemberByUserAndTeam(userId: number, teamId: number): Promise<TeamMember | undefined>;
@@ -724,6 +726,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Team Collaboration Methods
+  async getTeamById(id: number): Promise<Team | undefined> {
+    const result = await db.select().from(teams).where(eq(teams.id, id)).limit(1);
+    return result[0];
+  }
+
   async getTeamByUserId(userId: number): Promise<Team | undefined> {
     const membershipResult = await db.select()
       .from(teamMembers)
@@ -843,8 +850,14 @@ export class DatabaseStorage implements IStorage {
     const result = await db.delete(teamInvitations)
       .where(eq(teamInvitations.id, id))
       .returning();
-    
+
     return result.length > 0;
+  }
+
+  async getInvitationsByEmail(email: string): Promise<TeamInvitation[]> {
+    return await db.select()
+      .from(teamInvitations)
+      .where(and(eq(teamInvitations.email, email), eq(teamInvitations.status, 'pending')));
   }
 
   async getTeamMemberById(id: number): Promise<TeamMember | undefined> {

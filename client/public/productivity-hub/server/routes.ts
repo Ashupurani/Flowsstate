@@ -225,7 +225,7 @@ function createExcelWorkbook(data: any, userId: number): Buffer {
 }
 
 // Team invitation email sending function
-async function sendTeamInvitationEmail(email: string, inviterName: string, role: string): Promise<boolean> {
+async function sendTeamInvitationEmail(email: string, inviterName: string, role: string, invitationId: number): Promise<boolean> {
   const FRONTEND_URL = process.env.FRONTEND_URL || (process.env.REPLIT_DEV_DOMAIN 
     ? `https://${process.env.REPLIT_DEV_DOMAIN}` 
     : 'http://localhost:5000');
@@ -254,11 +254,14 @@ async function sendTeamInvitationEmail(email: string, inviterName: string, role:
             Join their team to collaborate on tasks, share habits, and achieve productivity goals together.
           </p>
           <div style="text-align: center;">
-            <a href="${FRONTEND_URL}" 
-               style="display: inline-block; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; text-decoration: none; padding: 12px 30px; border-radius: 6px; font-weight: bold;">
+            <a href="${FRONTEND_URL}/accept-invite?inviteId=${invitationId}&email=${encodeURIComponent(email)}"
+               style="display: inline-block; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; text-decoration: none; padding: 14px 36px; border-radius: 6px; font-weight: bold; font-size: 16px;">
               Accept Invitation
             </a>
           </div>
+          <p style="color: #94a3b8; font-size: 12px; text-align: center; margin-top: 12px;">
+            Or copy this link: ${FRONTEND_URL}/accept-invite?inviteId=${invitationId}&email=${encodeURIComponent(email)}
+          </p>
         </div>
         
         <div style="background: #f1f5f9; padding: 20px; border-radius: 8px; margin-bottom: 25px;">
@@ -1204,7 +1207,7 @@ For support, contact: support@productivityhub.com
       
       // Send invitation email
       try {
-        const emailSent = await sendTeamInvitationEmail(email, inviterName || "Team Member", role || "member");
+        const emailSent = await sendTeamInvitationEmail(email, inviterName || "Team Member", role || "member", invitation.id);
         if (emailSent) {
           console.log("✅ Team invitation email sent successfully to:", email);
         } else {
@@ -1264,6 +1267,69 @@ For support, contact: support@productivityhub.com
     } catch (error) {
       console.error("Error deleting team invitation:", error);
       res.status(500).json({ message: "Failed to delete invitation" });
+    }
+  });
+
+  // Get invitations sent TO the current user (by their email)
+  app.get("/api/team/my-invitations", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userEmail = req.user!.email;
+      const invitations = await storage.getInvitationsByEmail(userEmail);
+
+      // Enrich with team and inviter info
+      const enriched = await Promise.all(invitations.map(async (inv) => {
+        const inviter = await storage.getUserById(inv.invitedBy);
+        const team = await storage.getTeamById(inv.teamId);
+        return {
+          ...inv,
+          inviterName: inviter?.name || 'Someone',
+          teamName: team?.name || 'a team',
+        };
+      }));
+
+      res.json(enriched);
+    } catch (error) {
+      console.error("Error fetching my invitations:", error);
+      res.status(500).json({ message: "Failed to fetch invitations" });
+    }
+  });
+
+  // Accept a team invitation
+  app.post("/api/team/invitations/:invitationId/accept", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const userEmail = req.user!.email;
+      const invitationId = parseInt(req.params.invitationId);
+
+      const invitation = await storage.getTeamInvitationById(invitationId);
+      if (!invitation) {
+        return res.status(404).json({ message: "Invitation not found" });
+      }
+      if (invitation.email.toLowerCase() !== userEmail.toLowerCase()) {
+        return res.status(403).json({ message: "This invitation was not sent to your email address" });
+      }
+      if (invitation.status !== 'pending') {
+        return res.status(400).json({ message: "This invitation has already been processed" });
+      }
+      if (new Date() > new Date(invitation.expiresAt)) {
+        return res.status(400).json({ message: "This invitation has expired" });
+      }
+
+      // Check not already a member
+      const existing = await storage.getTeamMemberByUserAndTeam(userId, invitation.teamId);
+      if (existing) {
+        await storage.updateTeamInvitationStatus(invitationId, 'accepted');
+        return res.json({ message: "You are already a member of this team", teamId: invitation.teamId });
+      }
+
+      // Mark accepted and add to team
+      await storage.updateTeamInvitationStatus(invitationId, 'accepted');
+      await storage.addTeamMember({ teamId: invitation.teamId, userId, role: invitation.role });
+
+      res.json({ message: "Invitation accepted successfully", teamId: invitation.teamId });
+    } catch (error) {
+      console.error("Error accepting team invitation:", error);
+      res.status(500).json({ message: "Failed to accept invitation" });
     }
   });
 

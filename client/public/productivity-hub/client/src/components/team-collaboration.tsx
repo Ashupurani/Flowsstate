@@ -31,6 +31,11 @@ interface TeamInvitation {
   status: 'pending' | 'accepted' | 'declined';
 }
 
+interface MyInvitation extends TeamInvitation {
+  inviterName: string;
+  teamName: string;
+}
+
 export default function TeamCollaboration() {
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
   const queryClient = useQueryClient();
@@ -38,6 +43,7 @@ export default function TeamCollaboration() {
 
   const { data: members = [] } = useQuery<TeamMember[]>({ queryKey: ["/api/team/members"] });
   const { data: invitations = [] } = useQuery<TeamInvitation[]>({ queryKey: ["/api/team/invitations"] });
+  const { data: myInvitations = [] } = useQuery<MyInvitation[]>({ queryKey: ["/api/team/my-invitations"] });
 
   const inviteMutation = useMutation({
     mutationFn: async (inviteData: { email: string; role: string; inviterName: string }) => {
@@ -57,11 +63,26 @@ export default function TeamCollaboration() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/team/invitations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/team/my-invitations"] });
       setIsInviteDialogOpen(false);
       toast({
         title: "Invitation Sent",
         description: "Team invitation email has been sent successfully.",
       });
+    },
+  });
+
+  const acceptInviteMutation = useMutation({
+    mutationFn: async (invitationId: number) => {
+      return await apiRequest(`/api/team/invitations/${invitationId}/accept`, { method: "POST" });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/team/my-invitations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/team/members"] });
+      toast({ title: "Invitation accepted!", description: "You've joined the team." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to accept", description: error.message, variant: "destructive" });
     },
   });
 
@@ -309,13 +330,54 @@ If you weren't expecting this invitation, you can safely ignore this email.
         </CardContent>
       </Card>
 
-      {/* Pending Invitations */}
+      {/* Invitations I've Received */}
+      {myInvitations.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Mail size={20} />
+              <span>Invitations for You</span>
+              <Badge className="bg-blue-600">{myInvitations.length}</Badge>
+            </CardTitle>
+            <CardDescription>
+              You've been invited to join these teams.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {myInvitations.map((invitation) => (
+                <div key={invitation.id} className="flex items-center justify-between p-3 border rounded-lg bg-blue-50 dark:bg-blue-900/10">
+                  <div>
+                    <p className="font-medium">{invitation.teamName}</p>
+                    <p className="text-sm text-gray-500">
+                      Invited by <strong>{invitation.inviterName}</strong> as {invitation.role}
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      Sent {new Date(invitation.sentAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                    onClick={() => acceptInviteMutation.mutate(invitation.id)}
+                    disabled={acceptInviteMutation.isPending}
+                  >
+                    Accept
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Pending Invitations Sent by Me */}
       {invitations.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <Mail size={20} />
-              <span>Pending Invitations</span>
+              <span>Sent Invitations</span>
               <Badge variant="outline">{invitations.length}</Badge>
             </CardTitle>
             <CardDescription>
@@ -329,21 +391,15 @@ If you weren't expecting this invitation, you can safely ignore this email.
                   <div>
                     <p className="font-medium">{invitation.email}</p>
                     <p className="text-sm text-gray-500">
-                      Invited as {invitation.role} by {invitation.invitedBy}
+                      Invited as {invitation.role}
                     </p>
                     <p className="text-xs text-gray-400">
                       Sent {new Date(invitation.sentAt).toLocaleDateString()}
                     </p>
                   </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <Badge variant="outline" className="text-yellow-600 border-yellow-600">
-                      Pending
-                    </Badge>
-                    <Button size="sm" variant="ghost">
-                      <Trash2 size={14} />
-                    </Button>
-                  </div>
+                  <Badge variant="outline" className="text-yellow-600 border-yellow-600">
+                    Pending
+                  </Badge>
                 </div>
               ))}
             </div>
