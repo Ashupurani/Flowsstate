@@ -1822,6 +1822,14 @@ For support, contact: support@productivityhub.com
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 
+  // GET /api/my-assigned-tasks — tasks assigned to me across all Spaces
+  app.get("/api/my-assigned-tasks", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const tasks = await storage.getTasksAssignedToUser(req.user!.id);
+      res.json(tasks);
+    } catch (e: any) { res.status(500).json({ message: "Failed to fetch assigned tasks" }); }
+  });
+
   // ─── Workspace Tasks (Kanban) ─────────────────────────────────────────────
 
   // GET /api/workspaces/:id/tasks

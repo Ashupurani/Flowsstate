@@ -133,6 +133,7 @@ export interface IStorage {
   createWorkspaceTask(task: InsertWorkspaceTask): Promise<WorkspaceTask>;
   updateWorkspaceTask(id: number, workspaceId: number, updates: Partial<InsertWorkspaceTask>): Promise<WorkspaceTask>;
   deleteWorkspaceTask(id: number, workspaceId: number): Promise<boolean>;
+  getTasksAssignedToUser(userId: number): Promise<Array<WorkspaceTask & { workspaceName: string; workspaceColor: string }>>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1091,6 +1092,17 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(workspaceTasks.id, id), eq(workspaceTasks.workspaceId, workspaceId)))
       .returning();
     return result.length > 0;
+  }
+
+  async getTasksAssignedToUser(userId: number): Promise<Array<WorkspaceTask & { workspaceName: string; workspaceColor: string }>> {
+    const rows = await db
+      .select({ task: workspaceTasks, wsName: workspaces.name, wsColor: workspaces.color })
+      .from(workspaceTasks)
+      .innerJoin(workspaces, eq(workspaceTasks.workspaceId, workspaces.id))
+      .where(and(eq(workspaceTasks.assignedTo, userId), eq(workspaces.isArchived, false)))
+      .orderBy(desc(workspaceTasks.updatedAt))
+      .limit(20);
+    return rows.map(r => ({ ...r.task, workspaceName: r.wsName, workspaceColor: r.wsColor }));
   }
 }
 

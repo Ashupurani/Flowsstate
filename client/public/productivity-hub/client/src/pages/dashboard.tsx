@@ -5,7 +5,7 @@ import TaskBoard from "@/components/task-board";
 import CalendarSidebar from "@/components/calendar-sidebar";
 import TaskModal from "@/components/task-modal";
 import CollapsibleAIInsights from "@/components/collapsible-ai-insights";
-import CollapsibleTeamCollaboration from "@/components/collapsible-team-collaboration";
+import MySpaceTasks from "@/components/my-space-tasks";
 import PWAInstall from "@/components/pwa-install";
 import Achievements from "@/components/achievements";
 import DailyFlowWidget from "@/components/daily-flow-widget";
@@ -80,7 +80,7 @@ export default function Dashboard() {
               <TaskBoard />
             </div>
             <div className="space-y-6 mt-8">
-              <CollapsibleTeamCollaboration />
+              <MySpaceTasks />
               <CollapsibleAIInsights />
             </div>
           </div>
