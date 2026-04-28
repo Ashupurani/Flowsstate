@@ -24,7 +24,7 @@ import {
   Copy, Check, MoreHorizontal, Pin, PinOff,
   Briefcase, Code, Star, Heart, Home, Zap, Flame, Target,
   Layers, Book, Globe, Music, Coffee, Trophy, ChevronLeft, ChevronRight,
-  AlertCircle, X, User, Building2, Kanban, Calendar, Flag, ChevronDown,
+  AlertCircle, X, User, Building2, Kanban, Calendar, Flag, ChevronDown, Loader2,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1208,6 +1208,77 @@ function SettingsPanel({ workspace, myRole, onUpdate, onDeleted }: {
   );
 }
 
+// ─── Pending Workspace Invitations ───────────────────────────────────────────
+
+interface PendingInvite {
+  id: number;
+  workspaceId: number;
+  workspaceName: string;
+  workspaceColor: string;
+  inviterName: string;
+  role: string;
+  expiresAt: string;
+  token: string;
+}
+
+function PendingWorkspaceInvitations({ onAccepted }: { onAccepted: (workspaceId: number) => void }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: invites = [] } = useQuery<PendingInvite[]>({
+    queryKey: ["/api/my-workspace-invitations"],
+    refetchInterval: 30_000,
+  });
+
+  const acceptMutation = useMutation({
+    mutationFn: (token: string) => apiRequest("POST", `/api/workspace-invitations/${token}/accept`),
+    onSuccess: (data: { workspaceId: number }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/workspaces"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/my-workspace-invitations"] });
+      toast({ title: "Joined workspace!" });
+      onAccepted(data.workspaceId);
+    },
+    onError: (e: Error) => toast({ title: "Failed to accept", description: e.message, variant: "destructive" }),
+  });
+
+  if (invites.length === 0) return null;
+
+  return (
+    <div className="space-y-2 mb-4">
+      {invites.map(inv => (
+        <motion.div
+          key={inv.id}
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center gap-3 p-3 rounded-xl border bg-indigo-50/60 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800"
+        >
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white flex-shrink-0 shadow-sm" style={{ backgroundColor: inv.workspaceColor }}>
+            <Folder size={14} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate">
+              <span className="text-muted-foreground">{inv.inviterName} invited you to</span>{" "}
+              {inv.workspaceName}
+            </p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <RoleBadge role={inv.role} />
+              <span className="text-xs text-muted-foreground">· expires {new Date(inv.expiresAt).toLocaleDateString()}</span>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            className="flex-shrink-0 h-7 px-3 text-xs"
+            disabled={acceptMutation.isPending}
+            onClick={() => acceptMutation.mutate(inv.token)}
+          >
+            {acceptMutation.isPending ? <Loader2 size={11} className="animate-spin" /> : "Accept"}
+          </Button>
+        </motion.div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function WorkspacePage() {
@@ -1337,6 +1408,11 @@ export default function WorkspacePage() {
 
         {/* Main Content */}
         <div className="flex-1 overflow-y-auto bg-background">
+          {/* Pending invitations — always visible at top */}
+          <div className="px-6 pt-4">
+            <PendingWorkspaceInvitations onAccepted={(wsId) => { setSelectedId(wsId); setActiveTab("board"); }} />
+          </div>
+
           {!selected ? (
             <div className="flex flex-col items-center justify-center h-full text-center p-8">
               <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 max-w-sm">

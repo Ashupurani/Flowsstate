@@ -1737,6 +1737,18 @@ For support, contact: support@productivityhub.com
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 
+  // GET /api/workspace-join/:token — preview invite link info (no auth needed)
+  app.get("/api/workspace-join/:token", async (req, res) => {
+    try {
+      const link = await storage.getWorkspaceInviteLinkByToken(req.params.token);
+      if (!link || !link.isActive) return res.status(404).json({ message: "Invite link not found or inactive" });
+      if (link.expiresAt && new Date() > new Date(link.expiresAt)) return res.status(400).json({ message: "Invite link expired" });
+      if (link.maxUses && link.useCount >= link.maxUses) return res.status(400).json({ message: "Invite link has reached max uses" });
+      const ws = await storage.getWorkspace(link.workspaceId);
+      res.json({ workspaceName: ws?.name ?? "Workspace", workspaceColor: ws?.color ?? "#6366f1", workspaceIcon: ws?.icon ?? "folder", role: link.role });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // POST /api/workspace-join/:token — join via invite link
   app.post("/api/workspace-join/:token", authenticateToken, async (req: AuthenticatedRequest, res) => {
     try {
