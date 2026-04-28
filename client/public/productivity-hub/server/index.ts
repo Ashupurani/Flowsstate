@@ -157,6 +157,63 @@ async function runSchemaMigrations() {
       ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'team'
     `);
 
+    // Labels on workspace tasks
+    await client.query(`
+      ALTER TABLE workspace_tasks ADD COLUMN IF NOT EXISTS labels JSONB NOT NULL DEFAULT '[]'
+    `);
+
+    // Custom columns per workspace
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS workspace_columns (
+        id SERIAL PRIMARY KEY,
+        workspace_id INTEGER NOT NULL,
+        key TEXT NOT NULL,
+        name TEXT NOT NULL,
+        color TEXT NOT NULL DEFAULT '#94a3b8',
+        position INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW() NOT NULL
+      )
+    `);
+
+    // Subtasks per task
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS workspace_subtasks (
+        id SERIAL PRIMARY KEY,
+        task_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        completed BOOLEAN NOT NULL DEFAULT false,
+        position INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW() NOT NULL
+      )
+    `);
+
+    // Comments per task
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS workspace_task_comments (
+        id SERIAL PRIMARY KEY,
+        task_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        body TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW() NOT NULL
+      )
+    `);
+
+    // Seed default columns for any workspace that doesn't have them yet
+    await client.query(`
+      INSERT INTO workspace_columns (workspace_id, key, name, color, position)
+      SELECT w.id, cols.key, cols.name, cols.color, cols.position
+      FROM workspaces w
+      CROSS JOIN (VALUES
+        ('proposed',  'Proposed',    '#94a3b8', 0),
+        ('in_task',   'In Progress', '#3b82f6', 1),
+        ('hurdles',   'Hurdles',     '#ef4444', 2),
+        ('completed', 'Completed',   '#10b981', 3)
+      ) AS cols(key, name, color, position)
+      WHERE NOT EXISTS (
+        SELECT 1 FROM workspace_columns wc WHERE wc.workspace_id = w.id
+      )
+    `);
+
     log('Schema migrations complete');
   } catch (e: any) {
     log(`Schema migration warning: ${e.message}`);

@@ -2,6 +2,7 @@ import {
   tasks, habits, habitEntries, pomodoroSessions, users, teams, teamMembers, teamInvitations,
   goals, focusBlocks, focusInterruptions,
   workspaces, workspaceMembers, workspaceInvitations, workspaceInviteLinks, workspaceContent, workspaceActivity, workspaceTasks,
+  workspaceColumns, workspaceSubtasks, workspaceTaskComments,
   type Task, type InsertTask,
   type Habit, type InsertHabit,
   type HabitEntry, type InsertHabitEntry,
@@ -20,6 +21,9 @@ import {
   type WorkspaceContent, type InsertWorkspaceContent,
   type WorkspaceActivity, type InsertWorkspaceActivity,
   type WorkspaceTask, type InsertWorkspaceTask,
+  type WorkspaceColumn, type InsertWorkspaceColumn,
+  type WorkspaceSubtask, type InsertWorkspaceSubtask,
+  type WorkspaceTaskComment, type InsertWorkspaceTaskComment,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, ne, lt, gte, lte, or, desc } from "drizzle-orm";
@@ -134,6 +138,22 @@ export interface IStorage {
   updateWorkspaceTask(id: number, workspaceId: number, updates: Partial<InsertWorkspaceTask>): Promise<WorkspaceTask>;
   deleteWorkspaceTask(id: number, workspaceId: number): Promise<boolean>;
   getTasksAssignedToUser(userId: number): Promise<Array<WorkspaceTask & { workspaceName: string; workspaceColor: string }>>;
+  // Columns
+  getWorkspaceColumns(workspaceId: number): Promise<WorkspaceColumn[]>;
+  createWorkspaceColumn(col: InsertWorkspaceColumn): Promise<WorkspaceColumn>;
+  updateWorkspaceColumn(id: number, workspaceId: number, updates: Partial<InsertWorkspaceColumn>): Promise<WorkspaceColumn>;
+  deleteWorkspaceColumn(id: number, workspaceId: number): Promise<boolean>;
+  seedDefaultColumns(workspaceId: number): Promise<void>;
+  reorderWorkspaceColumns(workspaceId: number, orderedIds: number[]): Promise<void>;
+  // Subtasks
+  getSubtasks(taskId: number): Promise<WorkspaceSubtask[]>;
+  createSubtask(sub: InsertWorkspaceSubtask): Promise<WorkspaceSubtask>;
+  updateSubtask(id: number, taskId: number, updates: Partial<InsertWorkspaceSubtask>): Promise<WorkspaceSubtask>;
+  deleteSubtask(id: number, taskId: number): Promise<boolean>;
+  // Comments
+  getTaskComments(taskId: number): Promise<WorkspaceTaskComment[]>;
+  createTaskComment(comment: InsertWorkspaceTaskComment): Promise<WorkspaceTaskComment>;
+  deleteTaskComment(id: number, userId: number): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1103,6 +1123,101 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(workspaceTasks.updatedAt))
       .limit(20);
     return rows.map(r => ({ ...r.task, workspaceName: r.wsName, workspaceColor: r.wsColor }));
+  }
+
+  // ── Columns ──────────────────────────────────────────────────────────────────
+  async getWorkspaceColumns(workspaceId: number): Promise<WorkspaceColumn[]> {
+    return db.select().from(workspaceColumns)
+      .where(eq(workspaceColumns.workspaceId, workspaceId))
+      .orderBy(workspaceColumns.position);
+  }
+
+  async createWorkspaceColumn(col: InsertWorkspaceColumn): Promise<WorkspaceColumn> {
+    const [created] = await db.insert(workspaceColumns).values(col).returning();
+    return created;
+  }
+
+  async updateWorkspaceColumn(id: number, workspaceId: number, updates: Partial<InsertWorkspaceColumn>): Promise<WorkspaceColumn> {
+    const [updated] = await db.update(workspaceColumns).set(updates)
+      .where(and(eq(workspaceColumns.id, id), eq(workspaceColumns.workspaceId, workspaceId))).returning();
+    if (!updated) throw Object.assign(new Error("Column not found"), { status: 404 });
+    return updated;
+  }
+
+  async deleteWorkspaceColumn(id: number, workspaceId: number): Promise<boolean> {
+    const [col] = await db.select().from(workspaceColumns)
+      .where(and(eq(workspaceColumns.id, id), eq(workspaceColumns.workspaceId, workspaceId)));
+    if (!col) return false;
+    // Move tasks in this column to the first remaining column
+    const others = await db.select().from(workspaceColumns)
+      .where(and(eq(workspaceColumns.workspaceId, workspaceId), ne(workspaceColumns.id, id)))
+      .orderBy(workspaceColumns.position).limit(1);
+    if (others.length > 0) {
+      await db.update(workspaceTasks).set({ status: others[0].key })
+        .where(and(eq(workspaceTasks.workspaceId, workspaceId), eq(workspaceTasks.status, col.key)));
+    }
+    await db.delete(workspaceColumns).where(eq(workspaceColumns.id, id));
+    return true;
+  }
+
+  async seedDefaultColumns(workspaceId: number): Promise<void> {
+    const existing = await db.select().from(workspaceColumns).where(eq(workspaceColumns.workspaceId, workspaceId));
+    if (existing.length > 0) return;
+    const defaults = [
+      { key: "proposed",  name: "Proposed",     color: "#94a3b8", position: 0 },
+      { key: "in_task",   name: "In Progress",  color: "#3b82f6", position: 1 },
+      { key: "hurdles",   name: "Hurdles",      color: "#ef4444", position: 2 },
+      { key: "completed", name: "Completed",    color: "#10b981", position: 3 },
+    ];
+    await db.insert(workspaceColumns).values(defaults.map(d => ({ ...d, workspaceId })));
+  }
+
+  async reorderWorkspaceColumns(workspaceId: number, orderedIds: number[]): Promise<void> {
+    await Promise.all(orderedIds.map((id, i) =>
+      db.update(workspaceColumns).set({ position: i })
+        .where(and(eq(workspaceColumns.id, id), eq(workspaceColumns.workspaceId, workspaceId)))
+    ));
+  }
+
+  // ── Subtasks ─────────────────────────────────────────────────────────────────
+  async getSubtasks(taskId: number): Promise<WorkspaceSubtask[]> {
+    return db.select().from(workspaceSubtasks).where(eq(workspaceSubtasks.taskId, taskId))
+      .orderBy(workspaceSubtasks.position);
+  }
+
+  async createSubtask(sub: InsertWorkspaceSubtask): Promise<WorkspaceSubtask> {
+    const [created] = await db.insert(workspaceSubtasks).values(sub).returning();
+    return created;
+  }
+
+  async updateSubtask(id: number, taskId: number, updates: Partial<InsertWorkspaceSubtask>): Promise<WorkspaceSubtask> {
+    const [updated] = await db.update(workspaceSubtasks).set(updates)
+      .where(and(eq(workspaceSubtasks.id, id), eq(workspaceSubtasks.taskId, taskId))).returning();
+    if (!updated) throw Object.assign(new Error("Subtask not found"), { status: 404 });
+    return updated;
+  }
+
+  async deleteSubtask(id: number, taskId: number): Promise<boolean> {
+    const result = await db.delete(workspaceSubtasks)
+      .where(and(eq(workspaceSubtasks.id, id), eq(workspaceSubtasks.taskId, taskId))).returning();
+    return result.length > 0;
+  }
+
+  // ── Comments ─────────────────────────────────────────────────────────────────
+  async getTaskComments(taskId: number): Promise<WorkspaceTaskComment[]> {
+    return db.select().from(workspaceTaskComments).where(eq(workspaceTaskComments.taskId, taskId))
+      .orderBy(workspaceTaskComments.createdAt);
+  }
+
+  async createTaskComment(comment: InsertWorkspaceTaskComment): Promise<WorkspaceTaskComment> {
+    const [created] = await db.insert(workspaceTaskComments).values(comment).returning();
+    return created;
+  }
+
+  async deleteTaskComment(id: number, userId: number): Promise<boolean> {
+    const result = await db.delete(workspaceTaskComments)
+      .where(and(eq(workspaceTaskComments.id, id), eq(workspaceTaskComments.userId, userId))).returning();
+    return result.length > 0;
   }
 }
 

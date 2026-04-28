@@ -185,12 +185,40 @@ export const workspaceTasks = pgTable("workspace_tasks", {
   createdBy: integer("created_by").notNull().references(() => users.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   description: text("description"),
-  status: text("status").notNull().default("proposed"), // proposed | in_task | hurdles | completed
-  priority: text("priority").notNull().default("medium"), // low | medium | high
+  status: text("status").notNull().default("proposed"),
+  priority: text("priority").notNull().default("medium"),
   assignedTo: integer("assigned_to").references(() => users.id, { onDelete: "set null" }),
   dueDate: text("due_date"),
+  labels: jsonb("labels").$type<string[]>().default([]).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const workspaceColumns = pgTable("workspace_columns", {
+  id: serial("id").primaryKey(),
+  workspaceId: integer("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  key: text("key").notNull(),
+  name: text("name").notNull(),
+  color: text("color").notNull().default("#94a3b8"),
+  position: integer("position").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const workspaceSubtasks = pgTable("workspace_subtasks", {
+  id: serial("id").primaryKey(),
+  taskId: integer("task_id").notNull().references(() => workspaceTasks.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  completed: boolean("completed").notNull().default(false),
+  position: integer("position").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const workspaceTaskComments = pgTable("workspace_task_comments", {
+  id: serial("id").primaryKey(),
+  taskId: integer("task_id").notNull().references(() => workspaceTasks.id, { onDelete: "cascade" }),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // Workspace insert schemas
@@ -201,6 +229,9 @@ export const insertWorkspaceInviteLinkSchema = createInsertSchema(workspaceInvit
 export const insertWorkspaceContentSchema = createInsertSchema(workspaceContent).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertWorkspaceActivitySchema = createInsertSchema(workspaceActivity).omit({ id: true, createdAt: true });
 export const insertWorkspaceTaskSchema = createInsertSchema(workspaceTasks).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertWorkspaceColumnSchema = createInsertSchema(workspaceColumns).omit({ id: true, createdAt: true });
+export const insertWorkspaceSubtaskSchema = createInsertSchema(workspaceSubtasks).omit({ id: true, createdAt: true });
+export const insertWorkspaceTaskCommentSchema = createInsertSchema(workspaceTaskComments).omit({ id: true, createdAt: true });
 
 // Workspace types
 export type Workspace = typeof workspaces.$inferSelect;
@@ -217,6 +248,12 @@ export type WorkspaceActivity = typeof workspaceActivity.$inferSelect;
 export type InsertWorkspaceActivity = z.infer<typeof insertWorkspaceActivitySchema>;
 export type WorkspaceTask = typeof workspaceTasks.$inferSelect;
 export type InsertWorkspaceTask = z.infer<typeof insertWorkspaceTaskSchema>;
+export type WorkspaceColumn = typeof workspaceColumns.$inferSelect;
+export type InsertWorkspaceColumn = z.infer<typeof insertWorkspaceColumnSchema>;
+export type WorkspaceSubtask = typeof workspaceSubtasks.$inferSelect;
+export type InsertWorkspaceSubtask = z.infer<typeof insertWorkspaceSubtaskSchema>;
+export type WorkspaceTaskComment = typeof workspaceTaskComments.$inferSelect;
+export type InsertWorkspaceTaskComment = z.infer<typeof insertWorkspaceTaskCommentSchema>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 
