@@ -165,7 +165,7 @@ export default function Header() {
                   }`}
                 >
                   <Folder size={16} />
-                  <span>Workspaces</span>
+                  <span>Spaces</span>
                 </button>
               </Link>
             </nav>

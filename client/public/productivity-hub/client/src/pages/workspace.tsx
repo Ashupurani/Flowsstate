@@ -206,7 +206,7 @@ function CreateWorkspaceModal({
               className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${type === "personal" ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20" : "border-muted hover:border-muted-foreground/30"}`}
             >
               <User size={20} className={type === "personal" ? "text-indigo-600" : "text-muted-foreground"} />
-              <span className={`text-sm font-medium ${type === "personal" ? "text-indigo-700 dark:text-indigo-300" : "text-muted-foreground"}`}>Personal</span>
+              <span className={`text-sm font-medium ${type === "personal" ? "text-indigo-700 dark:text-indigo-300" : "text-muted-foreground"}`}>My Space</span>
               <span className="text-xs text-muted-foreground text-center leading-tight">Private, solo workspace</span>
             </button>
             <button
@@ -215,7 +215,7 @@ function CreateWorkspaceModal({
               className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${type === "team" ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20" : "border-muted hover:border-muted-foreground/30"}`}
             >
               <Building2 size={20} className={type === "team" ? "text-indigo-600" : "text-muted-foreground"} />
-              <span className={`text-sm font-medium ${type === "team" ? "text-indigo-700 dark:text-indigo-300" : "text-muted-foreground"}`}>Team</span>
+              <span className={`text-sm font-medium ${type === "team" ? "text-indigo-700 dark:text-indigo-300" : "text-muted-foreground"}`}>Team Space</span>
               <span className="text-xs text-muted-foreground text-center leading-tight">Collaborative, role-based</span>
             </button>
           </div>
@@ -934,7 +934,7 @@ export default function WorkspacePage() {
         >
           {!sidebarCollapsed && (
             <div className="h-12 px-3 border-b flex items-center justify-between flex-shrink-0">
-              <span className="font-semibold text-sm">Workspaces</span>
+              <span className="font-semibold text-sm">Spaces</span>
               <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground" onClick={() => setShowCreate(true)} title="New workspace">
                 <FolderPlus size={14} />
               </Button>
@@ -946,13 +946,15 @@ export default function WorkspacePage() {
               <div className="space-y-1 px-1">{[1, 2, 3].map(i => <Skeleton key={i} className="h-9 rounded-lg" />)}</div>
             ) : workspaces.length === 0 && !sidebarCollapsed ? (
               <div className="px-2 py-6 text-center">
-                <p className="text-xs text-muted-foreground mb-3">No workspaces yet</p>
+                <p className="text-xs text-muted-foreground mb-3">No spaces yet</p>
                 <Button size="sm" variant="outline" className="w-full text-xs" onClick={() => setShowCreate(true)}>
                   <Plus size={12} className="mr-1" /> Create one
                 </Button>
               </div>
-            ) : (
-              workspaces.map(ws => (
+            ) : (() => {
+              const personal = workspaces.filter(w => w.type === "personal");
+              const team = workspaces.filter(w => w.type !== "personal");
+              const renderWs = (ws: Workspace) => (
                 <button
                   key={ws.id}
                   onClick={() => handleWorkspaceSelect(ws.id)}
@@ -966,17 +968,34 @@ export default function WorkspacePage() {
                   <div className="w-6 h-6 rounded-md flex-shrink-0 flex items-center justify-center text-white" style={{ backgroundColor: ws.color }}>
                     <WorkspaceIcon name={ws.icon} size={12} />
                   </div>
-                  {!sidebarCollapsed && (
-                    <span className="truncate text-left flex-1">{ws.name}</span>
-                  )}
-                  {!sidebarCollapsed && (
-                    <span className="flex-shrink-0 opacity-40" title={ws.type === "personal" ? "Personal" : "Team"}>
-                      {ws.type === "personal" ? <User size={11} /> : <Building2 size={11} />}
-                    </span>
-                  )}
+                  {!sidebarCollapsed && <span className="truncate text-left flex-1">{ws.name}</span>}
                 </button>
-              ))
-            )}
+              );
+              return (
+                <>
+                  {personal.length > 0 && (
+                    <div className="mb-1">
+                      {!sidebarCollapsed && (
+                        <p className="px-2.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1">
+                          <User size={9} /> My Space
+                        </p>
+                      )}
+                      {personal.map(renderWs)}
+                    </div>
+                  )}
+                  {team.length > 0 && (
+                    <div>
+                      {!sidebarCollapsed && (
+                        <p className="px-2.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1 mt-2 flex items-center gap-1">
+                          <Building2 size={9} /> Team Spaces
+                        </p>
+                      )}
+                      {team.map(renderWs)}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
 
           <div className="p-2 border-t flex-shrink-0">
@@ -1035,7 +1054,7 @@ export default function WorkspacePage() {
                     <h1 className="text-2xl font-bold truncate">{selected.name}</h1>
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${selected.type === "personal" ? "bg-purple-100 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300" : "bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300"}`}>
                       {selected.type === "personal" ? <User size={10} /> : <Building2 size={10} />}
-                      {selected.type === "personal" ? "Personal" : "Team"}
+                      {selected.type === "personal" ? "My Space" : "Team Space"}
                     </span>
                   </div>
                   {selected.description && <p className="text-muted-foreground text-sm mt-0.5">{selected.description}</p>}

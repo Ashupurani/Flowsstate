@@ -1533,7 +1533,10 @@ For support, contact: support@productivityhub.com
       const ws = await storage.createWorkspace({ name: name.trim(), description, color: color || "#6366f1", icon: icon || "folder", type: type === "personal" ? "personal" : "team", ownerId: userId, isArchived: false });
       await storage.logWorkspaceActivity({ workspaceId: ws.id, userId, action: "workspace_created", metadata: { name: ws.name } });
       res.json(ws);
-    } catch (e) { res.status(500).json({ message: "Failed to create workspace" }); }
+    } catch (e: any) {
+      console.error("Create workspace error:", e?.message || e);
+      res.status(500).json({ message: e?.message || "Failed to create workspace" });
+    }
   });
 
   // GET /api/workspaces/:id
