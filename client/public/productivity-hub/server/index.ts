@@ -7,28 +7,24 @@ const app = express();
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: false, limit: '10kb' }));
 
-// Rate limiting middleware
-// Prevents brute force attacks and DoS
-const limiter = rateLimit({
+// API rate limiter — only applies to /api/* routes, not static assets
+const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  max: 500, // 500 API calls per IP per window (plenty for normal use)
   message: "Too many requests from this IP, please try again later.",
-  standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
-  legacyHeaders: false, // Disable `X-RateLimit-*` headers
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => !req.path.startsWith("/api"), // only count API requests
 });
+app.use(apiLimiter);
 
-// Apply rate limiting to all requests
-app.use(limiter);
-
-// Stricter rate limit for authentication endpoints
+// Stricter limit only for auth endpoints (brute-force protection)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5, // max 5 attempts per 15 minutes
-  skipSuccessfulRequests: true, // Don't count successful requests
+  max: 20, // 20 attempts per 15 minutes per IP
+  skipSuccessfulRequests: true,
   message: "Too many login attempts, please try again later.",
 });
-
-// Apply stricter auth rate limit
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/register", authLimiter);
 
