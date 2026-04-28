@@ -24,7 +24,7 @@ import {
   Copy, Check, MoreHorizontal, Pin, PinOff,
   Briefcase, Code, Star, Heart, Home, Zap, Flame, Target,
   Layers, Book, Globe, Music, Coffee, Trophy, ChevronLeft, ChevronRight,
-  AlertCircle, X, User, Building2,
+  AlertCircle, X, User, Building2, Kanban, Calendar, Flag, ChevronDown,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -91,6 +91,22 @@ interface WorkspaceInviteLink {
   createdAt: string;
 }
 
+interface WorkspaceTask {
+  id: number;
+  workspaceId: number;
+  createdBy: number;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  assignedTo: number | null;
+  dueDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+  creatorName: string;
+  assigneeName: string | null;
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const WORKSPACE_COLORS = [
@@ -116,6 +132,19 @@ const WORKSPACE_ICONS = [
   { name: "coffee", icon: Coffee },
   { name: "trophy", icon: Trophy },
 ];
+
+const BOARD_COLUMNS = [
+  { id: "proposed",  label: "Proposed",    dotColor: "#94a3b8", headerColor: "text-slate-600 dark:text-slate-400",  bg: "bg-slate-50 dark:bg-slate-900/30" },
+  { id: "in_task",   label: "In Progress", dotColor: "#3b82f6", headerColor: "text-blue-600 dark:text-blue-400",    bg: "bg-blue-50/60 dark:bg-blue-900/20" },
+  { id: "hurdles",   label: "Hurdles",     dotColor: "#ef4444", headerColor: "text-red-600 dark:text-red-400",     bg: "bg-red-50/60 dark:bg-red-900/20" },
+  { id: "completed", label: "Completed",   dotColor: "#10b981", headerColor: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50/60 dark:bg-emerald-900/20" },
+];
+
+const PRIORITY_CONFIG: Record<string, { label: string; cls: string }> = {
+  low:    { label: "Low",    cls: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400" },
+  medium: { label: "Medium", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
+  high:   { label: "High",   cls: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
+};
 
 function WorkspaceIcon({ name, size = 16 }: { name: string; size?: number }) {
   const found = WORKSPACE_ICONS.find(i => i.name === name);
@@ -278,7 +307,18 @@ function CreateWorkspaceModal({
 
 // ─── Invite Member Modal ──────────────────────────────────────────────────────
 
-function InviteMemberModal({ workspaceId, open, onOpenChange }: { workspaceId: number; open: boolean; onOpenChange: (v: boolean) => void }) {
+const ROLE_DESCRIPTIONS: Record<string, { label: string; desc: string; cls: string }> = {
+  viewer: { label: "Viewer", desc: "View content, tasks, and activity. Cannot create or edit anything.", cls: "border-slate-200 bg-slate-50 dark:bg-slate-900/30" },
+  editor: { label: "Editor", desc: "Create and edit content and tasks. Cannot manage members or settings.", cls: "border-green-200 bg-green-50 dark:bg-green-900/20" },
+  admin:  { label: "Admin",  desc: "Full access — manage members, invite links, content, tasks, and settings.", cls: "border-blue-200 bg-blue-50 dark:bg-blue-900/20" },
+};
+
+function InviteMemberModal({ workspaceId, workspaceName, open, onOpenChange }: {
+  workspaceId: number;
+  workspaceName: string;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
@@ -296,11 +336,13 @@ function InviteMemberModal({ workspaceId, open, onOpenChange }: { workspaceId: n
     onError: (e: Error) => toast({ title: "Failed to send invite", description: e.message, variant: "destructive" }),
   });
 
+  const roleInfo = ROLE_DESCRIPTIONS[role];
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><UserPlus size={18} /> Invite Member</DialogTitle>
+          <DialogTitle className="flex items-center gap-2"><UserPlus size={18} /> Invite to {workspaceName}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">
@@ -308,15 +350,21 @@ function InviteMemberModal({ workspaceId, open, onOpenChange }: { workspaceId: n
             <Input type="email" placeholder="colleague@company.com" value={email} onChange={e => setEmail(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label>Role</Label>
+            <Label>Role in this workspace</Label>
             <Select value={role} onValueChange={setRole}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="viewer">Viewer — read only</SelectItem>
-                <SelectItem value="editor">Editor — create &amp; edit content</SelectItem>
-                <SelectItem value="admin">Admin — full management</SelectItem>
+                <SelectItem value="viewer">Viewer</SelectItem>
+                <SelectItem value="editor">Editor</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
               </SelectContent>
             </Select>
+            {roleInfo && (
+              <div className={`text-xs rounded-lg border p-2.5 ${roleInfo.cls}`}>
+                <span className="font-medium">{roleInfo.label}: </span>
+                <span className="text-muted-foreground">{roleInfo.desc}</span>
+              </div>
+            )}
           </div>
           <div className="flex gap-2">
             <Button className="flex-1" disabled={!email || mutation.isPending} onClick={() => mutation.mutate({ email, role })}>
@@ -535,7 +583,7 @@ function MembersPanel({ workspace, myRole }: { workspace: Workspace; myRole: str
         </div>
       )}
 
-      <InviteMemberModal workspaceId={workspace.id} open={showInvite} onOpenChange={setShowInvite} />
+      <InviteMemberModal workspaceId={workspace.id} workspaceName={workspace.name} open={showInvite} onOpenChange={setShowInvite} />
       <InviteLinkModal workspaceId={workspace.id} open={showInviteLink} onOpenChange={setShowInviteLink} />
 
       <AlertDialog open={!!removeTarget} onOpenChange={v => !v && setRemoveTarget(null)}>
@@ -580,6 +628,7 @@ function ActivityFeed({ workspaceId }: { workspaceId: number }) {
       case "content_deleted": return `deleted "${m?.title}"`;
       case "content_pinned": return `pinned "${m?.title}"`;
       case "content_unpinned": return `unpinned "${m?.title}"`;
+      case "task_created": return `created task "${m?.title}"`;
       case "invite_link_created": return "created an invite link";
       case "invite_link_deleted": return "deactivated an invite link";
       default: return activity.action.replace(/_/g, " ");
@@ -623,6 +672,275 @@ function ActivityFeed({ workspaceId }: { workspaceId: number }) {
         </div>
       ))}
     </div>
+  );
+}
+
+// ─── Workspace Board (Kanban) ─────────────────────────────────────────────────
+
+function WorkspaceBoard({ workspace, myRole, members }: { workspace: Workspace; myRole: string; members: WorkspaceMember[] }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [addingCol, setAddingCol] = useState<string | null>(null);
+  const [newTitle, setNewTitle] = useState("");
+  const [newPriority, setNewPriority] = useState("medium");
+  const [newDesc, setNewDesc] = useState("");
+  const [editTask, setEditTask] = useState<WorkspaceTask | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+  const [editPriority, setEditPriority] = useState("medium");
+  const [editAssignedTo, setEditAssignedTo] = useState<string>("none");
+  const [editDueDate, setEditDueDate] = useState("");
+
+  const { data: tasks = [], isLoading } = useQuery<WorkspaceTask[]>({
+    queryKey: [`/api/workspaces/${workspace.id}/tasks`],
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (data: object) => apiRequest("POST", `/api/workspaces/${workspace.id}/tasks`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/workspaces/${workspace.id}/tasks`] });
+      setAddingCol(null); setNewTitle(""); setNewPriority("medium"); setNewDesc("");
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: object }) =>
+      apiRequest("PUT", `/api/workspaces/${workspace.id}/tasks/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/workspaces/${workspace.id}/tasks`] });
+      setEditTask(null);
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/workspaces/${workspace.id}/tasks/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: [`/api/workspaces/${workspace.id}/tasks`] }),
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const moveTask = (task: WorkspaceTask, newStatus: string) => {
+    updateMutation.mutate({ id: task.id, data: { status: newStatus } });
+  };
+
+  const openEdit = (task: WorkspaceTask) => {
+    setEditTask(task);
+    setEditTitle(task.title);
+    setEditDesc(task.description ?? "");
+    setEditPriority(task.priority);
+    setEditAssignedTo(task.assignedTo ? String(task.assignedTo) : "none");
+    setEditDueDate(task.dueDate ?? "");
+  };
+
+  const STATUS_ORDER = ["proposed", "in_task", "hurdles", "completed"];
+
+  if (isLoading) {
+    return (
+      <div className="flex gap-4 overflow-x-auto pb-4">
+        {BOARD_COLUMNS.map(col => (
+          <div key={col.id} className="flex-shrink-0 w-72">
+            <Skeleton className="h-8 w-full mb-3 rounded-lg" />
+            <div className="space-y-2">{[1, 2].map(i => <Skeleton key={i} className="h-24 rounded-xl" />)}</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="flex gap-3 overflow-x-auto pb-4" style={{ minHeight: 400 }}>
+        {BOARD_COLUMNS.map(col => {
+          const colTasks = tasks.filter(t => t.status === col.id);
+          const isAdding = addingCol === col.id;
+          return (
+            <div key={col.id} className="flex-shrink-0 w-72 flex flex-col">
+              {/* Column header */}
+              <div className={`flex items-center justify-between px-3 py-2 rounded-t-xl ${col.bg} border border-b-0 border-border/50`}>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: col.dotColor }} />
+                  <span className={`text-xs font-semibold uppercase tracking-wide ${col.headerColor}`}>{col.label}</span>
+                  <span className="text-xs text-muted-foreground bg-background/60 px-1.5 py-0.5 rounded-full">{colTasks.length}</span>
+                </div>
+                {canEdit(myRole) && (
+                  <Button
+                    variant="ghost" size="sm"
+                    className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                    onClick={() => { setAddingCol(isAdding ? null : col.id); setNewTitle(""); setNewPriority("medium"); setNewDesc(""); }}
+                  >
+                    {isAdding ? <X size={12} /> : <Plus size={12} />}
+                  </Button>
+                )}
+              </div>
+
+              {/* Column body */}
+              <div className={`flex-1 border border-border/50 rounded-b-xl p-2 space-y-2 ${col.bg}`}>
+                {/* Inline add form */}
+                {isAdding && (
+                  <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="bg-card border rounded-xl p-3 space-y-2 shadow-sm">
+                    <Input
+                      autoFocus
+                      placeholder="Task title…"
+                      value={newTitle}
+                      onChange={e => setNewTitle(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter" && newTitle.trim()) createMutation.mutate({ title: newTitle, description: newDesc || null, priority: newPriority, status: col.id }); if (e.key === "Escape") setAddingCol(null); }}
+                      className="h-8 text-sm"
+                    />
+                    <Input
+                      placeholder="Description (optional)"
+                      value={newDesc}
+                      onChange={e => setNewDesc(e.target.value)}
+                      className="h-7 text-xs"
+                    />
+                    <div className="flex items-center gap-2">
+                      <Select value={newPriority} onValueChange={setNewPriority}>
+                        <SelectTrigger className="h-7 text-xs flex-1"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="low">Low priority</SelectItem>
+                          <SelectItem value="medium">Medium priority</SelectItem>
+                          <SelectItem value="high">High priority</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button size="sm" className="h-7 px-3 text-xs" disabled={!newTitle.trim() || createMutation.isPending}
+                        onClick={() => createMutation.mutate({ title: newTitle, description: newDesc || null, priority: newPriority, status: col.id })}>
+                        Add
+                      </Button>
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* Task cards */}
+                {colTasks.map(task => (
+                  <motion.div
+                    key={task.id}
+                    layout
+                    initial={{ opacity: 0, scale: 0.97 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="group bg-card border rounded-xl p-3 hover:shadow-md transition-all cursor-default"
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-1.5">
+                      <span className="text-sm font-medium leading-snug flex-1">{task.title}</span>
+                      {canEdit(myRole) && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-5 w-5 p-0 opacity-0 group-hover:opacity-100 flex-shrink-0 mt-0.5">
+                              <MoreHorizontal size={12} />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-44">
+                            <DropdownMenuItem onClick={() => openEdit(task)}>
+                              <Edit3 size={12} className="mr-2" /> Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            {STATUS_ORDER.filter(s => s !== task.status).map(s => {
+                              const label = BOARD_COLUMNS.find(c => c.id === s)?.label ?? s;
+                              return (
+                                <DropdownMenuItem key={s} onClick={() => moveTask(task, s)}>
+                                  <ChevronDown size={12} className="mr-2" /> Move to {label}
+                                </DropdownMenuItem>
+                              );
+                            })}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem className="text-red-600 focus:text-red-600" onClick={() => deleteMutation.mutate(task.id)}>
+                              <Trash2 size={12} className="mr-2" /> Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                    </div>
+
+                    {task.description && (
+                      <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{task.description}</p>
+                    )}
+
+                    <div className="flex items-center flex-wrap gap-1.5">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${PRIORITY_CONFIG[task.priority]?.cls ?? PRIORITY_CONFIG.medium.cls}`}>
+                        {PRIORITY_CONFIG[task.priority]?.label ?? task.priority}
+                      </span>
+                      {task.dueDate && (
+                        <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                          <Calendar size={9} /> {task.dueDate}
+                        </span>
+                      )}
+                      {task.assigneeName && (
+                        <span className="text-[10px] text-muted-foreground ml-auto">{task.assigneeName}</span>
+                      )}
+                    </div>
+                  </motion.div>
+                ))}
+
+                {colTasks.length === 0 && !isAdding && (
+                  <div className="text-center py-6 text-muted-foreground/50">
+                    <p className="text-xs">No tasks</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Edit Task Dialog */}
+      <Dialog open={!!editTask} onOpenChange={v => !v && setEditTask(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Edit Task</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label>Title</Label>
+              <Input value={editTitle} onChange={e => setEditTitle(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>Description</Label>
+              <Textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} rows={2} placeholder="Optional description" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label>Priority</Label>
+                <Select value={editPriority} onValueChange={setEditPriority}>
+                  <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Due Date</Label>
+                <Input type="date" value={editDueDate} onChange={e => setEditDueDate(e.target.value)} className="h-8 text-sm" />
+              </div>
+            </div>
+            {workspace.type === "team" && members.length > 0 && (
+              <div className="space-y-1">
+                <Label>Assign to</Label>
+                <Select value={editAssignedTo} onValueChange={setEditAssignedTo}>
+                  <SelectTrigger className="h-8"><SelectValue placeholder="Unassigned" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Unassigned</SelectItem>
+                    {members.map(m => (
+                      <SelectItem key={m.userId} value={String(m.userId)}>{m.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button className="flex-1" disabled={!editTitle.trim() || updateMutation.isPending}
+                onClick={() => editTask && updateMutation.mutate({ id: editTask.id, data: {
+                  title: editTitle, description: editDesc || null, priority: editPriority,
+                  dueDate: editDueDate || null, assignedTo: editAssignedTo !== "none" ? Number(editAssignedTo) : null,
+                }})}>
+                {updateMutation.isPending ? "Saving…" : "Save"}
+              </Button>
+              <Button variant="outline" onClick={() => setEditTask(null)}>Cancel</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -896,7 +1214,7 @@ export default function WorkspacePage() {
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [activeTab, setActiveTab] = useState("content");
+  const [activeTab, setActiveTab] = useState("board");
   const [showCreate, setShowCreate] = useState(false);
 
   const { data: workspaces = [], isLoading } = useQuery<Workspace[]>({
@@ -918,8 +1236,13 @@ export default function WorkspacePage() {
 
   const handleWorkspaceSelect = (id: number) => {
     setSelectedId(id);
-    setActiveTab("content");
+    setActiveTab("board");
   };
+
+  const { data: selectedMembers = [] } = useQuery<WorkspaceMember[]>({
+    queryKey: [`/api/workspaces/${selectedId}/members`],
+    enabled: !!selectedId,
+  });
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -1065,8 +1388,11 @@ export default function WorkspacePage() {
               {/* Tabs */}
               <Tabs value={activeTab} onValueChange={setActiveTab}>
                 <TabsList className="mb-6">
+                  <TabsTrigger value="board" className="flex items-center gap-1.5">
+                    <Kanban size={13} /> Board
+                  </TabsTrigger>
                   <TabsTrigger value="content" className="flex items-center gap-1.5">
-                    <FileText size={13} /> Content
+                    <FileText size={13} /> Notes
                   </TabsTrigger>
                   {selected.type === "team" && (
                     <TabsTrigger value="members" className="flex items-center gap-1.5">
@@ -1082,6 +1408,9 @@ export default function WorkspacePage() {
                 </TabsList>
 
                 <motion.div key={`${selected.id}-${activeTab}`} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.15 }}>
+                  <TabsContent value="board">
+                    <WorkspaceBoard workspace={selected} myRole={myRole} members={selectedMembers} />
+                  </TabsContent>
                   <TabsContent value="content">
                     <ContentArea workspace={selected} myRole={myRole} />
                   </TabsContent>

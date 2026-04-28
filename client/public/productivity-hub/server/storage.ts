@@ -1,7 +1,7 @@
 import {
   tasks, habits, habitEntries, pomodoroSessions, users, teams, teamMembers, teamInvitations,
   goals, focusBlocks, focusInterruptions,
-  workspaces, workspaceMembers, workspaceInvitations, workspaceInviteLinks, workspaceContent, workspaceActivity,
+  workspaces, workspaceMembers, workspaceInvitations, workspaceInviteLinks, workspaceContent, workspaceActivity, workspaceTasks,
   type Task, type InsertTask,
   type Habit, type InsertHabit,
   type HabitEntry, type InsertHabitEntry,
@@ -19,6 +19,7 @@ import {
   type WorkspaceInviteLink, type InsertWorkspaceInviteLink,
   type WorkspaceContent, type InsertWorkspaceContent,
   type WorkspaceActivity, type InsertWorkspaceActivity,
+  type WorkspaceTask, type InsertWorkspaceTask,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, ne, lt, gte, lte, or, desc } from "drizzle-orm";
@@ -128,6 +129,10 @@ export interface IStorage {
   deleteWorkspaceContent(id: number, workspaceId: number): Promise<boolean>;
   getWorkspaceActivity(workspaceId: number, limit?: number): Promise<WorkspaceActivity[]>;
   logWorkspaceActivity(entry: InsertWorkspaceActivity): Promise<WorkspaceActivity>;
+  getWorkspaceTasks(workspaceId: number): Promise<WorkspaceTask[]>;
+  createWorkspaceTask(task: InsertWorkspaceTask): Promise<WorkspaceTask>;
+  updateWorkspaceTask(id: number, workspaceId: number, updates: Partial<InsertWorkspaceTask>): Promise<WorkspaceTask>;
+  deleteWorkspaceTask(id: number, workspaceId: number): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1061,6 +1066,31 @@ export class DatabaseStorage implements IStorage {
   async logWorkspaceActivity(entry: InsertWorkspaceActivity): Promise<WorkspaceActivity> {
     const [created] = await db.insert(workspaceActivity).values(entry).returning();
     return created;
+  }
+
+  async getWorkspaceTasks(workspaceId: number): Promise<WorkspaceTask[]> {
+    return await db.select().from(workspaceTasks).where(eq(workspaceTasks.workspaceId, workspaceId)).orderBy(desc(workspaceTasks.createdAt));
+  }
+
+  async createWorkspaceTask(task: InsertWorkspaceTask): Promise<WorkspaceTask> {
+    const [created] = await db.insert(workspaceTasks).values(task).returning();
+    return created;
+  }
+
+  async updateWorkspaceTask(id: number, workspaceId: number, updates: Partial<InsertWorkspaceTask>): Promise<WorkspaceTask> {
+    const [updated] = await db.update(workspaceTasks)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(eq(workspaceTasks.id, id), eq(workspaceTasks.workspaceId, workspaceId)))
+      .returning();
+    if (!updated) throw Object.assign(new Error("Task not found"), { status: 404 });
+    return updated;
+  }
+
+  async deleteWorkspaceTask(id: number, workspaceId: number): Promise<boolean> {
+    const result = await db.delete(workspaceTasks)
+      .where(and(eq(workspaceTasks.id, id), eq(workspaceTasks.workspaceId, workspaceId)))
+      .returning();
+    return result.length > 0;
   }
 }
 

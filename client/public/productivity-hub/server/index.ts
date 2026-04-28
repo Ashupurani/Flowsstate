@@ -136,6 +136,21 @@ async function runSchemaMigrations() {
         created_at TIMESTAMP DEFAULT NOW() NOT NULL
       )
     `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS workspace_tasks (
+        id SERIAL PRIMARY KEY,
+        workspace_id INTEGER NOT NULL,
+        created_by INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        status TEXT NOT NULL DEFAULT 'proposed',
+        priority TEXT NOT NULL DEFAULT 'medium',
+        assigned_to INTEGER,
+        due_date TEXT,
+        created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+        updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+      )
+    `);
 
     // Ensure the type column exists on workspaces (added after initial release)
     await client.query(`

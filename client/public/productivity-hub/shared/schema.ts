@@ -179,6 +179,20 @@ export const workspaceActivity = pgTable("workspace_activity", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const workspaceTasks = pgTable("workspace_tasks", {
+  id: serial("id").primaryKey(),
+  workspaceId: integer("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  createdBy: integer("created_by").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  description: text("description"),
+  status: text("status").notNull().default("proposed"), // proposed | in_task | hurdles | completed
+  priority: text("priority").notNull().default("medium"), // low | medium | high
+  assignedTo: integer("assigned_to").references(() => users.id, { onDelete: "set null" }),
+  dueDate: text("due_date"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Workspace insert schemas
 export const insertWorkspaceSchema = createInsertSchema(workspaces).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertWorkspaceMemberSchema = createInsertSchema(workspaceMembers).omit({ id: true, joinedAt: true, lastActive: true });
@@ -186,6 +200,7 @@ export const insertWorkspaceInvitationSchema = createInsertSchema(workspaceInvit
 export const insertWorkspaceInviteLinkSchema = createInsertSchema(workspaceInviteLinks).omit({ id: true, createdAt: true, useCount: true });
 export const insertWorkspaceContentSchema = createInsertSchema(workspaceContent).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertWorkspaceActivitySchema = createInsertSchema(workspaceActivity).omit({ id: true, createdAt: true });
+export const insertWorkspaceTaskSchema = createInsertSchema(workspaceTasks).omit({ id: true, createdAt: true, updatedAt: true });
 
 // Workspace types
 export type Workspace = typeof workspaces.$inferSelect;
@@ -200,6 +215,8 @@ export type WorkspaceContent = typeof workspaceContent.$inferSelect;
 export type InsertWorkspaceContent = z.infer<typeof insertWorkspaceContentSchema>;
 export type WorkspaceActivity = typeof workspaceActivity.$inferSelect;
 export type InsertWorkspaceActivity = z.infer<typeof insertWorkspaceActivitySchema>;
+export type WorkspaceTask = typeof workspaceTasks.$inferSelect;
+export type InsertWorkspaceTask = z.infer<typeof insertWorkspaceTaskSchema>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 

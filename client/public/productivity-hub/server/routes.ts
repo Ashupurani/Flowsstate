@@ -1822,6 +1822,60 @@ For support, contact: support@productivityhub.com
     } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
   });
 
+  // ─── Workspace Tasks (Kanban) ─────────────────────────────────────────────
+
+  // GET /api/workspaces/:id/tasks
+  app.get("/api/workspaces/:id/tasks", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const wsId = parseInt(req.params.id);
+      await assertWorkspaceMember(req.user!.id, wsId);
+      const tasks = await storage.getWorkspaceTasks(wsId);
+      const enriched = await Promise.all(tasks.map(async t => {
+        const creator = await storage.getUserById(t.createdBy);
+        const assignee = t.assignedTo ? await storage.getUserById(t.assignedTo) : null;
+        return { ...t, creatorName: creator?.name || "Unknown", assigneeName: assignee?.name || null };
+      }));
+      res.json(enriched);
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // POST /api/workspaces/:id/tasks
+  app.post("/api/workspaces/:id/tasks", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const wsId = parseInt(req.params.id);
+      const member = await assertWorkspaceMember(req.user!.id, wsId);
+      if (!canEditWorkspace(member.role)) return res.status(403).json({ message: "Insufficient permissions" });
+      const { title, description, status = "proposed", priority = "medium", assignedTo, dueDate } = req.body;
+      if (!title?.trim()) return res.status(400).json({ message: "Title required" });
+      const task = await storage.createWorkspaceTask({ workspaceId: wsId, createdBy: req.user!.id, title: title.trim(), description: description || null, status, priority, assignedTo: assignedTo || null, dueDate: dueDate || null });
+      await storage.logWorkspaceActivity({ workspaceId: wsId, userId: req.user!.id, action: "task_created", metadata: { title: task.title } });
+      res.json(task);
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // PUT /api/workspaces/:id/tasks/:taskId
+  app.put("/api/workspaces/:id/tasks/:taskId", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const wsId = parseInt(req.params.id);
+      const member = await assertWorkspaceMember(req.user!.id, wsId);
+      if (!canEditWorkspace(member.role)) return res.status(403).json({ message: "Insufficient permissions" });
+      const { title, description, status, priority, assignedTo, dueDate } = req.body;
+      const updated = await storage.updateWorkspaceTask(parseInt(req.params.taskId), wsId, { ...(title !== undefined && { title: title.trim() }), ...(description !== undefined && { description }), ...(status && { status }), ...(priority && { priority }), ...(assignedTo !== undefined && { assignedTo: assignedTo || null }), ...(dueDate !== undefined && { dueDate: dueDate || null }) });
+      res.json(updated);
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
+  // DELETE /api/workspaces/:id/tasks/:taskId
+  app.delete("/api/workspaces/:id/tasks/:taskId", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const wsId = parseInt(req.params.id);
+      const member = await assertWorkspaceMember(req.user!.id, wsId);
+      if (!canEditWorkspace(member.role)) return res.status(403).json({ message: "Insufficient permissions" });
+      await storage.deleteWorkspaceTask(parseInt(req.params.taskId), wsId);
+      res.json({ message: "Deleted" });
+    } catch (e: any) { res.status(e.status || 500).json({ message: e.message }); }
+  });
+
   // ─────────────────────────────────────────────────────────────────────────
 
   const httpServer = createServer(app);
